@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, ScrollView, Animated, Dimensions, RefreshControl, LayoutAnimation, Platform, UIManager } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, ScrollView, Dimensions, RefreshControl, LayoutAnimation, Platform, UIManager, Animated as RNAnimated } from 'react-native';
+import Animated, { useSharedValue, useAnimatedStyle, withRepeat, withTiming, Easing, FadeInDown } from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { PieChart } from 'react-native-gifted-charts';
@@ -11,8 +12,9 @@ import { FONTS } from '../constants/theme';
 import { useAuth } from '../context/AuthContext';
 import { getExpenses, getMonthlyTotal, getCategoryTotals } from '../db/queries';
 import ExpenseCard from '../components/ExpenseCard';
+import AnimatedBackground from '../components/AnimatedBackground';
 
-const BRAND_PURPLE = '#6C4CF1';
+const BRAND_PURPLE = '#FF6B6B'; // Sunset Horizon Primary
 const BG_WHITE = '#FFFFFF';
 const TEXT_DARK = '#1C1C28';
 const TEXT_MUTED = '#8F92A1';
@@ -45,12 +47,27 @@ export default function DashboardScreen({ navigation }) {
   const [pieData, setPieData] = useState([]);
   const [refreshing, setRefreshing] = useState(false);
   
+  // Advanced breathing animation for FAB
+  const fabScale = useSharedValue(1);
+
+  useEffect(() => {
+    fabScale.value = withRepeat(
+      withTiming(1.08, { duration: 1500, easing: Easing.inOut(Easing.ease) }),
+      -1, // infinite
+      true // reverse (pulse)
+    );
+  }, []);
+
+  const animatedFabStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: fabScale.value }],
+  }));
+
   // Dropdown state
   const [monthDropOpen, setMonthDropOpen] = useState(false);
   const [monthItems, setMonthItems] = useState(generateMonthOptions());
 
   // Progress Bar Animation
-  const progressAnim = useRef(new Animated.Value(0)).current;
+  const progressAnim = useRef(new RNAnimated.Value(0)).current;
 
   const loadData = useCallback(() => {
     if (!user) return;
@@ -89,7 +106,7 @@ export default function DashboardScreen({ navigation }) {
       const budget = user?.monthly_budget || 25000; // fallback to 25k if not set
       const actualPct = budget > 0 ? Math.round((total / budget) * 100) : 0;
       
-      Animated.timing(progressAnim, {
+      RNAnimated.timing(progressAnim, {
         toValue: Math.min(actualPct, 100),
         duration: 1500,
         useNativeDriver: false,
@@ -122,6 +139,7 @@ export default function DashboardScreen({ navigation }) {
 
   return (
     <View style={styles.safeArea}>
+      <AnimatedBackground />
       <ScrollView 
         contentContainerStyle={styles.scrollContent} 
         showsVerticalScrollIndicator={false}
@@ -179,7 +197,7 @@ export default function DashboardScreen({ navigation }) {
           </View>
 
           <View style={styles.progressBg}>
-            <Animated.View style={[
+            <RNAnimated.View style={[
               styles.progressFill, 
               { 
                 width: progressAnim.interpolate({
@@ -261,22 +279,6 @@ export default function DashboardScreen({ navigation }) {
           </View>
         </View>
       </ScrollView>
-
-      {/* 6. Floating Action Button */}
-      <TouchableOpacity
-        style={styles.fab}
-        onPress={() => navigation.navigate('AddExpense')}
-        activeOpacity={0.85}
-      >
-        <LinearGradient
-          colors={[BRAND_PURPLE, '#8862F8']}
-          style={styles.fabGradient}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 1 }}
-        >
-          <Plus stroke="#FFF" size={32} />
-        </LinearGradient>
-      </TouchableOpacity>
     </View>
   );
 }
@@ -291,13 +293,13 @@ const softShadow = {
 };
 
 const styles = StyleSheet.create({
-  safeArea: { flex: 1, backgroundColor: '#FAFAFC' },
+  safeArea: { flex: 1, backgroundColor: 'transparent' },
   scrollContent: { paddingBottom: 100 },
   
   header: {
     flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
     paddingHorizontal: 20, paddingVertical: 12,
-    backgroundColor: '#FAFAFC',
+    backgroundColor: 'transparent',
   },
   headerTitle: { fontFamily: FONTS.bold, fontSize: 18, color: TEXT_DARK },
   iconBtn: { padding: 4 },

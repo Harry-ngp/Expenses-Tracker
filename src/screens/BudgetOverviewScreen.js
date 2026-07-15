@@ -1,5 +1,6 @@
-import React, { useState, useCallback } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, RefreshControl, Animated, LayoutAnimation, Platform, UIManager } from 'react-native';
+import React, { useState, useCallback, useEffect } from 'react';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, RefreshControl, Animated as RNAnimated, LayoutAnimation, Platform, UIManager } from 'react-native';
+import Animated, { useSharedValue, useAnimatedStyle, withRepeat, withTiming, Easing } from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { Settings2, ChevronDown, Plus, PiggyBank } from 'lucide-react-native';
@@ -10,8 +11,10 @@ import { FONTS, SPACING, RADIUS, SHADOWS } from '../constants/theme';
 import { getCategoryBudgets, getCategoryTotals, getCategoriesForUser, getMonthlyTotal } from '../db/queries';
 import { formatINR, currentMonthStart, todayISO, currentMonthKey } from '../utils/dateHelpers';
 import DropDownPicker from 'react-native-dropdown-picker';
+import { LinearGradient } from 'expo-linear-gradient';
+import AnimatedBackground from '../components/AnimatedBackground';
 
-const BRAND_PURPLE = '#6C4CF1';
+const BRAND_PURPLE = '#FF6B6B'; // Sunset Horizon Primary
 const BG_APP = '#F7F8FA';
 const TEXT_DARK = '#1C1C28';
 const TEXT_MUTED = '#8F92A1';
@@ -82,6 +85,18 @@ export default function BudgetOverviewScreen() {
     setCategories(relevant);
   }, [user, selectedMonth]);
 
+  // FAB Breathing
+  const fabScale = useSharedValue(1);
+  useEffect(() => {
+    fabScale.value = withRepeat(
+      withTiming(1.08, { duration: 1500, easing: Easing.inOut(Easing.ease) }),
+      -1, true
+    );
+  }, []);
+  const animatedFabStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: fabScale.value }],
+  }));
+
   useFocusEffect(useCallback(() => { loadData(); }, [loadData]));
 
   const overallBudget = user?.monthly_budget || 0;
@@ -98,6 +113,7 @@ export default function BudgetOverviewScreen() {
 
   return (
     <View style={styles.safeArea}>
+      <AnimatedBackground />
 
       <ScrollView
         contentContainerStyle={styles.content}
@@ -245,22 +261,26 @@ export default function BudgetOverviewScreen() {
 
       </ScrollView>
 
-      {/* FAB */}
-      <TouchableOpacity style={styles.fab} onPress={() => navigation.navigate('BudgetSettings')}>
-        <Plus stroke="#FFF" size={26} />
-      </TouchableOpacity>
+      {/* Floating Action Button */}
+      <Animated.View style={[styles.fab, animatedFabStyle]}>
+        <LinearGradient colors={['#FF6B6B', '#FF8E53']} style={StyleSheet.absoluteFill} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}>
+          <TouchableOpacity style={[{flex:1, alignItems:'center', justifyContent:'center'}]} onPress={() => navigation.navigate('BudgetSettings')}>
+            <Settings2 stroke="#FFF" size={24} />
+          </TouchableOpacity>
+        </LinearGradient>
+      </Animated.View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  safeArea: { flex: 1, backgroundColor: BG_APP },
+  safeArea: { flex: 1, backgroundColor: 'transparent' },
 
   header: {
     flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
-    paddingHorizontal: 20, paddingVertical: 14,
-  },
-  headerTitle: { fontFamily: FONTS.bold, fontSize: FONTS.sizes.xxl, color: TEXT_DARK },
+    paddingHorizontal: 20, paddingVertical: 12,
+    backgroundColor: 'transparent',
+  },headerTitle: { fontFamily: FONTS.bold, fontSize: FONTS.sizes.xxl, color: TEXT_DARK },
   iconBtn: { padding: 6, borderRadius: RADIUS.md, backgroundColor: '#FFF', ...SHADOWS.card },
 
   monthSelector: {
@@ -341,9 +361,8 @@ const styles = StyleSheet.create({
   fab: {
     position: 'absolute', bottom: 24, right: 24,
     width: 60, height: 60, borderRadius: 30,
-    backgroundColor: BRAND_PURPLE,
+    overflow: 'hidden',
     alignItems: 'center', justifyContent: 'center',
-    shadowColor: BRAND_PURPLE, shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.35, shadowRadius: 12, elevation: 10,
+    ...SHADOWS.strong,
   },
 });

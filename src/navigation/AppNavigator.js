@@ -3,8 +3,9 @@ import { NavigationContainer } from '@react-navigation/native';
 import { createStackNavigator } from '@react-navigation/stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
-import { Home, List, PieChart, BarChart2, MoreHorizontal, AlignLeft, Bell } from 'lucide-react-native';
+import { Home, List, PieChart, BarChart2, MoreHorizontal, AlignLeft, Bell, Plus } from 'lucide-react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { LinearGradient } from 'expo-linear-gradient';
 import { useNavigation } from '@react-navigation/native';
 
 import { useAuth } from '../context/AuthContext';
@@ -26,7 +27,7 @@ import NotificationsScreen   from '../screens/NotificationsScreen';
 const Stack = createStackNavigator();
 const Tab   = createBottomTabNavigator();
 
-const BRAND_PURPLE = '#6C4CF1';
+const BRAND_PURPLE = '#FF6B6B'; // Sunset Horizon Primary
 const TEXT_DARK    = '#1C1C28';
 const TEXT_MUTED   = '#8F92A1';
 const BG_WHITE     = '#FFFFFF';
@@ -42,7 +43,7 @@ const AppHeader = ({ title }) => {
     <SafeAreaView style={headerStyles.safe} edges={['top']}>
       <View style={headerStyles.container}>
         {/* Left — hamburger */}
-        <TouchableOpacity style={headerStyles.iconBtn}>
+        <TouchableOpacity style={headerStyles.iconBtn} onPress={() => navigation.navigate('Menu')}>
           <AlignLeft stroke={TEXT_DARK} size={22} strokeWidth={2.5} />
         </TouchableOpacity>
 
@@ -82,6 +83,34 @@ const TabIcon = ({ IconComponent, label, focused }) => {
     </View>
   );
 };
+
+// ── Center Add Button ───────────────────────────────────────────
+const CenterAddButton = ({ onPress }) => (
+  <TouchableOpacity
+    style={{
+      top: -20,
+      justifyContent: 'center',
+      alignItems: 'center',
+      ...SHADOWS.strong
+    }}
+    onPress={onPress}
+    activeOpacity={0.8}
+  >
+    <LinearGradient
+      colors={['#FF6B6B', '#FF8E53']}
+      style={{
+        width: 56,
+        height: 56,
+        borderRadius: 28,
+        justifyContent: 'center',
+        alignItems: 'center',
+      }}
+      start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}
+    >
+      <Plus stroke="#FFF" size={32} />
+    </LinearGradient>
+  </TouchableOpacity>
+);
 
 // ── Bottom tab navigator ────────────────────────────────────────
 const MainTabs = () => (
@@ -128,6 +157,21 @@ const MainTabs = () => (
       }}
     />
     <Tab.Screen
+      name="AddPlaceholder"
+      component={View} // Dummy component
+      options={{
+        tabBarIcon: () => null,
+        tabBarLabel: () => null,
+        tabBarButton: (props) => <CenterAddButton {...props} />
+      }}
+      listeners={({ navigation }) => ({
+        tabPress: e => {
+          e.preventDefault();
+          navigation.navigate('AddExpense');
+        }
+      })}
+    />
+    <Tab.Screen
       name="Budget"
       component={BudgetOverviewScreen}
       options={{
@@ -142,15 +186,6 @@ const MainTabs = () => (
       options={{
         tabBarIcon: ({ focused }) => (
           <TabIcon IconComponent={BarChart2} label="Reports" focused={focused} />
-        ),
-      }}
-    />
-    <Tab.Screen
-      name="More"
-      component={MenuScreen}
-      options={{
-        tabBarIcon: ({ focused }) => (
-          <TabIcon IconComponent={MoreHorizontal} label="More" focused={focused} />
         ),
       }}
     />
@@ -185,6 +220,11 @@ const AppNavigator = () => {
             <Stack.Screen
               name="Calendar"
               component={CalendarScreen}
+              options={{ presentation: 'modal' }}
+            />
+            <Stack.Screen
+              name="Menu"
+              component={MenuScreen}
               options={{ presentation: 'modal' }}
             />
             <Stack.Screen
@@ -250,6 +290,16 @@ const headerStyles = StyleSheet.create({
     fontFamily: FONTS.bold,
   }
 });
+
+const SHADOWS = {
+  strong: {
+    shadowColor: '#FF6B6B',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.25,
+    shadowRadius: 14,
+    elevation: 10,
+  }
+};
 
 // ── Tab icon styles (COLUMN — icon on top, text under) ─────────
 const tabStyles = StyleSheet.create({

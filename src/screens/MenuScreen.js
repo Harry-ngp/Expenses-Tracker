@@ -10,7 +10,7 @@ import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
 import { FONTS, SHADOWS, RADIUS } from '../constants/theme';
 
-const BRAND_PURPLE = '#6C4CF1';
+const BRAND_PURPLE = '#FF6B6B'; // Sunset Horizon Primary
 const BG_APP = '#F7F8FA';
 const TEXT_DARK = '#1C1C28';
 const TEXT_MUTED = '#8F92A1';

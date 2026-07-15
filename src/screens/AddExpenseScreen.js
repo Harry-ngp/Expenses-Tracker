@@ -14,7 +14,7 @@ import { useNotifications } from '../context/NotificationContext';
 import { addExpense, updateExpense, getCategoriesForUser, getMonthlyTotal } from '../db/queries';
 import { formatINR } from '../utils/dateHelpers';
 
-const BRAND_PURPLE = '#6C4CF1';
+const BRAND_PURPLE = '#FF6B6B'; // Sunset Horizon Primary
 const BG_WHITE = '#FFFFFF';
 const BG_APP = '#FAFAFC';
 const TEXT_DARK = '#1C1C28';

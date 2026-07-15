@@ -9,9 +9,10 @@ import { FONTS, SHADOWS, RADIUS } from '../constants/theme';
 import { useAuth } from '../context/AuthContext';
 import { getExpenses, getCategoryTotals, getDailyTotals, getMonthlyTotals } from '../db/queries';
 import { formatINR, todayISO, lastNDays, currentMonthStart, currentMonthEnd, currentYearStart } from '../utils/dateHelpers';
+import AnimatedBackground from '../components/AnimatedBackground';
 
 const { width: SCREEN_W } = Dimensions.get('window');
-const BRAND_PURPLE = '#6C4CF1';
+const BRAND_PURPLE = '#FF6B6B'; // Sunset Horizon Primary
 const BG_APP = '#F7F8FA';
 const TEXT_DARK = '#1C1C28';
 const TEXT_MUTED = '#8F92A1';
@@ -35,7 +36,7 @@ function getMonthDisplay(key) {
   return `${MONTH_LABELS[parseInt(month, 10) - 1]} ${year}`;
 }
 
-const PIE_COLORS = ['#6C4CF1', '#10B981', '#F59E0B', '#6B7280', '#4B5563', '#EF4444'];
+const PIE_COLORS = ['#FF6B6B', '#FF8E53', '#F59E0B', '#10B981', '#4B5563', '#EF4444'];
 
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
   UIManager.setLayoutAnimationEnabledExperimental(true);
@@ -125,6 +126,7 @@ export default function ReportsScreen({ navigation }) {
 
   return (
     <View style={styles.safeArea}>
+      <AnimatedBackground />
 
       {/* Segmented Control */}
       <View style={styles.segmentWrap}>
@@ -243,11 +245,12 @@ export default function ReportsScreen({ navigation }) {
 }
 
 const styles = StyleSheet.create({
-  safeArea: { flex: 1, backgroundColor: BG_APP },
+  safeArea: { flex: 1, backgroundColor: 'transparent' },
 
   header: {
     flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
-    paddingHorizontal: 20, paddingVertical: 14,
+    paddingHorizontal: 20, paddingVertical: 12,
+    backgroundColor: 'transparent',
   },
   headerTitle: { fontFamily: FONTS.bold, fontSize: FONTS.sizes.xxl, color: TEXT_DARK },
   iconBtn: { padding: 6, borderRadius: RADIUS.md, backgroundColor: '#FFF', ...SHADOWS.card },

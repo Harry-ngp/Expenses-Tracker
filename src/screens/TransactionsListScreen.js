@@ -1,18 +1,21 @@
-import React, { useState, useCallback, useMemo } from 'react';
+import React, { useState, useCallback, useMemo, useEffect } from 'react';
 import { View, Text, SectionList, TouchableOpacity, StyleSheet, RefreshControl, TextInput, LayoutAnimation, Platform, UIManager } from 'react-native';
+import Animated, { FadeInDown, useSharedValue, useAnimatedStyle, withRepeat, withTiming, Easing } from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
 import { Search, X } from 'lucide-react-native';
+import { LinearGradient } from 'expo-linear-gradient';
 
 import { FONTS, SPACING, RADIUS, SHADOWS } from '../constants/theme';
 import { useAuth } from '../context/AuthContext';
 import { getExpenses, deleteExpense } from '../db/queries';
 import ExpenseCard from '../components/ExpenseCard';
+import AnimatedBackground from '../components/AnimatedBackground';
 
 const BG_APP = '#F7F8FA';
 const TEXT_DARK = '#1C1C28';
 const TEXT_MUTED = '#8F92A1';
-const BRAND_PURPLE = '#6C4CF1';
+const BRAND_PURPLE = '#FF6B6B'; // Sunset Horizon Primary
 const BORDER = '#E8EAF0';
 
 const relativeHeader = (dateStr) => {
@@ -54,6 +57,18 @@ export default function TransactionsListScreen({ navigation }) {
     setExpenses(data);
   }, [user?.id, search]);
 
+  // FAB Breathing
+  const fabScale = useSharedValue(1);
+  useEffect(() => {
+    fabScale.value = withRepeat(
+      withTiming(1.08, { duration: 1500, easing: Easing.inOut(Easing.ease) }),
+      -1, true
+    );
+  }, []);
+  const animatedFabStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: fabScale.value }],
+  }));
+
   useFocusEffect(useCallback(() => { loadData(); }, [loadData]));
 
   const onRefresh = () => {
@@ -90,6 +105,7 @@ export default function TransactionsListScreen({ navigation }) {
 
   return (
     <View style={styles.safeArea}>
+      <AnimatedBackground />
 
       {/* Search bar (collapsible) */}
       {searchVisible && (
@@ -130,12 +146,14 @@ export default function TransactionsListScreen({ navigation }) {
       <SectionList
         sections={sections}
         keyExtractor={item => item.id.toString()}
-        renderItem={({ item }) => (
-          <ExpenseCard
-            expense={item}
-            onEdit={() => handleEdit(item)}
-            onDelete={() => handleDelete(item.id)}
-          />
+        renderItem={({ item, index }) => (
+          <Animated.View entering={FadeInDown.delay(index * 50).springify()}>
+            <ExpenseCard
+              expense={item}
+              onEdit={() => handleEdit(item)}
+              onDelete={() => handleDelete(item.id)}
+            />
+          </Animated.View>
         )}
         renderSectionHeader={({ section }) => (
           <View style={styles.sectionHeader}>
@@ -156,22 +174,17 @@ export default function TransactionsListScreen({ navigation }) {
         }
         showsVerticalScrollIndicator={false}
       />
-
-      {/* FAB */}
-      <TouchableOpacity style={styles.fab} onPress={() => navigation.navigate('AddExpense', {})}>
-        <Text style={styles.fabText}>+</Text>
-      </TouchableOpacity>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  safeArea: { flex: 1, backgroundColor: BG_APP },
+  safeArea: { flex: 1, backgroundColor: 'transparent' },
 
   header: {
     flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
     paddingHorizontal: 20, paddingVertical: 14,
-    backgroundColor: BG_APP,
+    backgroundColor: 'transparent',
   },
   headerTitle: { fontFamily: FONTS.bold, fontSize: FONTS.sizes.xxl, color: TEXT_DARK },
   headerActions: { flexDirection: 'row', gap: 8 },
@@ -219,10 +232,9 @@ const styles = StyleSheet.create({
   fab: {
     position: 'absolute', bottom: 24, right: 24,
     width: 60, height: 60, borderRadius: 30,
-    backgroundColor: BRAND_PURPLE,
+    overflow: 'hidden',
     alignItems: 'center', justifyContent: 'center',
-    shadowColor: BRAND_PURPLE, shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.35, shadowRadius: 12, elevation: 10,
+    ...SHADOWS.strong,
   },
   fabText: { color: '#FFF', fontSize: 32, fontFamily: FONTS.regular, lineHeight: 36 },
 });

@@ -25,7 +25,7 @@ const relativeDate = (dateStr) => {
 
 export default function ExpenseCard({ expense, onEdit, onDelete, readonly = false }) {
   const { colors } = useTheme();
-  const iconBg = (expense.category_color || '#6C4CF1') + '20';
+  const iconBg = (expense.category_color || '#FF6B6B') + '20';
 
   const confirmDelete = () => {
     Alert.alert('Delete Expense', 'Are you sure you want to delete this expense?', [
