@@ -1,36 +1,51 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity, StyleSheet,
-  ScrollView, KeyboardAvoidingView, Platform, Alert, ActivityIndicator, Switch,
+  ScrollView, KeyboardAvoidingView, Platform, Alert, ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { LinearGradient } from 'expo-linear-gradient';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import DropDownPicker from 'react-native-dropdown-picker';
+import { X, Check, Calendar as CalendarIcon } from 'lucide-react-native';
 
-import { FONTS, SPACING, RADIUS, SHADOWS } from '../constants/theme';
+import { FONTS, SPACING, RADIUS } from '../constants/theme';
 import { useAuth } from '../context/AuthContext';
-import { useTheme } from '../context/ThemeContext';
-import { addExpense, updateExpense, getCategoriesForUser } from '../db/queries';
-import { todayISO, formatDate } from '../utils/dateHelpers';
+import { useNotifications } from '../context/NotificationContext';
+import { addExpense, updateExpense, getCategoriesForUser, getMonthlyTotal } from '../db/queries';
+import { formatINR } from '../utils/dateHelpers';
+
+const BRAND_PURPLE = '#6C4CF1';
+const BG_WHITE = '#FFFFFF';
+const BG_APP = '#FAFAFC';
+const TEXT_DARK = '#1C1C28';
+const TEXT_MUTED = '#8F92A1';
+const BORDER_COLOR = '#E4E7ED';
+
+// Custom Date formatter "5 Jun 2024, 9:30 AM"
+const formatCustomDate = (dateString) => {
+  if (!dateString) return '';
+  const d = new Date(dateString);
+  const options = { day: 'numeric', month: 'short', year: 'numeric', hour: 'numeric', minute: '2-digit' };
+  return d.toLocaleDateString('en-GB', options);
+};
 
 export default function AddExpenseScreen({ navigation, route }) {
   const { user } = useAuth();
-  const { colors, isDarkMode } = useTheme();
+  const { addNotification } = useNotifications();
   
   const editingExpense = route.params?.expense || null;
   const isEditing = !!editingExpense;
 
+  // Ensure default date includes current time for "9:30 AM" format
+  const initialDate = editingExpense ? new Date(editingExpense.date) : new Date();
+
   // Form state
   const [amount, setAmount]           = useState(editingExpense ? String(editingExpense.amount) : '');
   const [description, setDescription] = useState(editingExpense?.description || '');
-  const [date, setDate]               = useState(editingExpense?.date || todayISO());
+  const [date, setDate]               = useState(initialDate.toISOString());
   const [categoryId, setCategoryId]   = useState(editingExpense?.category_id || null);
   const [paymentMethod, setPaymentMethod] = useState(editingExpense?.payment_method || 'Cash');
-  const [isRecurring, setIsRecurring] = useState(editingExpense?.is_recurring === 1);
-  const [recurrenceDay, setRecurrenceDay] = useState(String(editingExpense?.recurrence_day || 1));
   const [loading, setLoading]         = useState(false);
-  const [errors, setErrors]           = useState({});
 
   // Dropdowns
   const [catDropOpen, setCatDropOpen] = useState(false);
@@ -38,10 +53,10 @@ export default function AddExpenseScreen({ navigation, route }) {
   
   const [payDropOpen, setPayDropOpen] = useState(false);
   const [payItems, setPayItems]       = useState([
-    { label: '💵 Cash', value: 'Cash' },
-    { label: '💳 Card', value: 'Card' },
-    { label: '📱 UPI', value: 'UPI' },
-    { label: '🏦 Bank Transfer', value: 'Bank Transfer' },
+    { label: 'Cash', value: 'Cash' },
+    { label: 'Card', value: 'Card' },
+    { label: 'UPI', value: 'UPI' },
+    { label: 'Bank Transfer', value: 'Bank Transfer' },
   ]);
 
   const [showDatePicker, setShowDatePicker] = useState(false);
@@ -50,8 +65,13 @@ export default function AddExpenseScreen({ navigation, route }) {
     if (user) {
       const dbCats = getCategoriesForUser(user.id);
       const items = dbCats.map(c => ({
-        label: `${c.icon || '📦'}  ${c.name}`,
-        value: c.id
+        label: c.name,
+        value: c.id,
+        icon: () => (
+          <View style={[styles.dropdownIconWrap, { backgroundColor: c.color + '22' }]}>
+            <Text style={styles.dropdownIconText}>{c.icon || '📦'}</Text>
+          </View>
+        )
       }));
       setCatItems(items);
       if (!isEditing && items.length > 0) {
@@ -60,21 +80,16 @@ export default function AddExpenseScreen({ navigation, route }) {
     }
   }, [user]);
 
-  const validate = () => {
-    const e = {};
-    if (!amount || isNaN(Number(amount)) || Number(amount) <= 0) e.amount = 'Enter a valid positive amount';
-    if (!date)       e.date     = 'Select a date';
-    if (!categoryId) e.category = 'Select a category';
-    if (isRecurring) {
-      const day = Number(recurrenceDay);
-      if (!day || day < 1 || day > 31) e.recurrenceDay = 'Enter a valid day (1–31)';
-    }
-    setErrors(e);
-    return Object.keys(e).length === 0;
-  };
-
   const handleSave = async () => {
-    if (!validate()) return;
+    if (!amount || isNaN(Number(amount)) || Number(amount) <= 0) {
+      Alert.alert('Invalid Amount', 'Please enter a valid positive amount');
+      return;
+    }
+    if (!categoryId) {
+      Alert.alert('Category Required', 'Please select a category');
+      return;
+    }
+
     setLoading(true);
     try {
       const payload = {
@@ -84,14 +99,31 @@ export default function AddExpenseScreen({ navigation, route }) {
         description: description.trim(),
         date,
         paymentMethod,
-        isRecurring,
-        recurrenceDay: isRecurring ? Number(recurrenceDay) : null,
       };
 
       if (isEditing) {
         updateExpense({ id: editingExpense.id, ...payload });
       } else {
         addExpense(payload);
+        
+        // Logical Push Notification Check: Did this expense blow the monthly budget?
+        const currentMonthKey = date.substring(0, 7); // 'YYYY-MM'
+        const newTotal = getMonthlyTotal(user.id, currentMonthKey);
+        if (user.monthly_budget && user.monthly_budget > 0 && newTotal > user.monthly_budget) {
+          addNotification({
+            title: 'Budget Exceeded! ⚠️',
+            message: `You've spent ${formatINR(newTotal)}, which exceeds your monthly budget of ${formatINR(user.monthly_budget)}.`,
+            type: 'warning',
+            time: new Date().toISOString(),
+          });
+        } else if (user.monthly_budget && user.monthly_budget > 0 && newTotal > user.monthly_budget * 0.9) {
+          addNotification({
+            title: 'Nearing Budget Limit ⚠️',
+            message: `You've spent ${formatINR(newTotal)}, which is over 90% of your monthly budget.`,
+            type: 'warning',
+            time: new Date().toISOString(),
+          });
+        }
       }
       navigation.goBack();
     } catch (err) {
@@ -104,180 +136,109 @@ export default function AddExpenseScreen({ navigation, route }) {
   const onDateChange = (event, selectedDate) => {
     setShowDatePicker(false);
     if (selectedDate) {
-      setDate(selectedDate.toISOString().split('T')[0]);
+      setDate(selectedDate.toISOString());
     }
   };
 
   return (
-    <SafeAreaView style={[styles.safeArea, { backgroundColor: colors.bg }]} edges={['top', 'bottom']}>
+    <SafeAreaView style={styles.safeArea} edges={['top', 'bottom']}>
       <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
-        <ScrollView
-          contentContainerStyle={styles.container}
-          keyboardShouldPersistTaps="handled"
-          showsVerticalScrollIndicator={false}
-        >
-          {/* Header */}
-          <View style={styles.header}>
-            <TouchableOpacity 
-              style={[styles.backBtn, { backgroundColor: colors.bgCard, borderColor: colors.border }]} 
-              onPress={() => navigation.goBack()}
-            >
-              <Text style={[styles.backIcon, { color: colors.textPrimary }]}>←</Text>
-            </TouchableOpacity>
-            <Text style={[styles.headerTitle, { color: colors.textPrimary }]}>
-              {isEditing ? 'Edit Expense' : 'New Expense'}
-            </Text>
-            <View style={{ width: 40 }} />
-          </View>
+        
+        {/* Header (X - Title - ✓) */}
+        <View style={styles.header}>
+          <TouchableOpacity onPress={() => navigation.goBack()} style={styles.iconBtn}>
+            <X stroke={TEXT_DARK} size={24} />
+          </TouchableOpacity>
+          <Text style={styles.headerTitle}>{isEditing ? 'Edit Expense' : 'Add Expense'}</Text>
+          <TouchableOpacity onPress={handleSave} style={styles.iconBtn} disabled={loading}>
+            {loading ? <ActivityIndicator color={BRAND_PURPLE} /> : <Check stroke={TEXT_DARK} size={24} />}
+          </TouchableOpacity>
+        </View>
 
-          {/* Amount input — hero style */}
-          <LinearGradient colors={colors.gradientPrimary} style={styles.amountCard}>
-            <Text style={[styles.currencyLabel, { color: 'rgba(255,255,255,0.8)' }]}>₹  INR</Text>
-            <View style={styles.amountRow}>
-              <Text style={styles.rupeeSym}>₹</Text>
-              <TextInput
-                style={styles.amountInput}
-                placeholder="0.00"
-                placeholderTextColor="rgba(255,255,255,0.5)"
-                keyboardType="decimal-pad"
-                value={amount}
-                onChangeText={(t) => { setAmount(t); setErrors((e) => ({ ...e, amount: '' })); }}
-              />
-            </View>
-            {errors.amount ? <Text style={styles.errorTextHero}>{errors.amount}</Text> : null}
-          </LinearGradient>
+        <ScrollView contentContainerStyle={styles.container} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+          
+          {/* Category Dropdown */}
+          <Text style={styles.label}>Category</Text>
+          <DropDownPicker
+            open={catDropOpen}
+            value={categoryId}
+            items={catItems}
+            setOpen={setCatDropOpen}
+            setValue={setCategoryId}
+            setItems={setCatItems}
+            onOpen={() => setPayDropOpen(false)}
+            style={styles.dropdown}
+            dropDownContainerStyle={styles.dropdownContainer}
+            textStyle={styles.dropdownText}
+            placeholderStyle={{ color: TEXT_MUTED }}
+            placeholder="Select category"
+            listMode="MODAL"
+            modalProps={{ animationType: 'slide' }}
+            modalTitle="Select Category"
+          />
 
-          {/* Form fields */}
-          <View style={[styles.form, { backgroundColor: colors.bgCard, borderColor: colors.border }]}>
-            
-            {/* Category */}
-            <Text style={[styles.label, { color: colors.textSecondary }]}>Category</Text>
-            <DropDownPicker
-              open={catDropOpen}
-              value={categoryId}
-              items={catItems}
-              setOpen={setCatDropOpen}
-              setValue={setCategoryId}
-              setItems={setCatItems}
-              onOpen={() => setPayDropOpen(false)}
-              style={[styles.dropdown, { backgroundColor: colors.bgInput, borderColor: colors.border }]}
-              dropDownContainerStyle={[styles.dropdownContainer, { backgroundColor: colors.bgCard, borderColor: colors.border }]}
-              textStyle={[styles.dropdownText, { color: colors.textPrimary }]}
-              placeholderStyle={{ color: colors.textMuted }}
-              arrowIconStyle={{ tintColor: colors.textSecondary }}
-              tickIconStyle={{ tintColor: colors.primary }}
-              theme={isDarkMode ? "DARK" : "LIGHT"}
-              placeholder="Select category"
-              zIndex={3000}
-              zIndexInverse={1000}
-            />
-            {errors.category ? <Text style={[styles.errorText, { color: colors.danger }]}>{errors.category}</Text> : null}
-
-            {/* Payment Method */}
-            <Text style={[styles.label, { marginTop: SPACING.md, color: colors.textSecondary }]}>Payment Method</Text>
-            <DropDownPicker
-              open={payDropOpen}
-              value={paymentMethod}
-              items={payItems}
-              setOpen={setPayDropOpen}
-              setValue={setPaymentMethod}
-              setItems={setPayItems}
-              onOpen={() => setCatDropOpen(false)}
-              style={[styles.dropdown, { backgroundColor: colors.bgInput, borderColor: colors.border }]}
-              dropDownContainerStyle={[styles.dropdownContainer, { backgroundColor: colors.bgCard, borderColor: colors.border }]}
-              textStyle={[styles.dropdownText, { color: colors.textPrimary }]}
-              placeholderStyle={{ color: colors.textMuted }}
-              arrowIconStyle={{ tintColor: colors.textSecondary }}
-              tickIconStyle={{ tintColor: colors.primary }}
-              theme={isDarkMode ? "DARK" : "LIGHT"}
-              placeholder="Select payment method"
-              zIndex={2000}
-              zIndexInverse={2000}
-            />
-
-            {/* Date */}
-            <Text style={[styles.label, { marginTop: SPACING.md, color: colors.textSecondary }]}>Date</Text>
-            <TouchableOpacity 
-              style={[styles.dateBtn, { backgroundColor: colors.bgInput, borderColor: colors.border }]} 
-              onPress={() => setShowDatePicker(true)}
-            >
-              <Text style={styles.dateBtnIcon}>📅</Text>
-              <Text style={[styles.dateBtnText, { color: colors.textPrimary }]}>{formatDate(date)}</Text>
-            </TouchableOpacity>
-            {showDatePicker && (
-              <DateTimePicker
-                value={new Date(date)}
-                mode="date"
-                display="default"
-                maximumDate={new Date()}
-                onChange={onDateChange}
-              />
-            )}
-
-            {/* Description */}
-            <Text style={[styles.label, { marginTop: SPACING.md, color: colors.textSecondary }]}>
-              Description <Text style={[styles.optional, { color: colors.textMuted }]}>(optional)</Text>
-            </Text>
+          {/* Amount */}
+          <Text style={styles.label}>Amount</Text>
+          <View style={styles.inputCard}>
+            <Text style={styles.rupeeSymbol}>₹ </Text>
             <TextInput
-              style={[styles.descInput, { backgroundColor: colors.bgInput, borderColor: colors.border, color: colors.textPrimary }]}
-              placeholder="What was this for?"
-              placeholderTextColor={colors.textMuted}
-              value={description}
-              onChangeText={setDescription}
-              multiline
-              maxLength={120}
+              style={styles.amountInput}
+              placeholder="0.00"
+              placeholderTextColor={TEXT_MUTED}
+              keyboardType="decimal-pad"
+              value={amount}
+              onChangeText={setAmount}
             />
-
-            {/* Recurring toggle */}
-            <View style={[styles.recurringRow, { borderTopColor: colors.border }]}>
-              <View>
-                <Text style={[styles.recurringLabel, { color: colors.textPrimary }]}>Recurring Monthly</Text>
-                <Text style={[styles.recurringSubLabel, { color: colors.textSecondary }]}>Auto-add every month</Text>
-              </View>
-              <Switch
-                value={isRecurring}
-                onValueChange={setIsRecurring}
-                trackColor={{ false: colors.border, true: colors.primary }}
-                thumbColor={isRecurring ? '#fff' : colors.textMuted}
-              />
-            </View>
-
-            {isRecurring && (
-              <View>
-                <Text style={[styles.label, { color: colors.textSecondary }]}>Day of month (1–31)</Text>
-                <TextInput
-                  style={[styles.descInput, { height: 48, textAlignVertical: 'center', backgroundColor: colors.bgInput, borderColor: colors.border, color: colors.textPrimary }]}
-                  placeholder="e.g. 1 for 1st of month"
-                  placeholderTextColor={colors.textMuted}
-                  keyboardType="number-pad"
-                  value={recurrenceDay}
-                  onChangeText={(t) => { setRecurrenceDay(t); setErrors((e) => ({ ...e, recurrenceDay: '' })); }}
-                  maxLength={2}
-                />
-                {errors.recurrenceDay ? <Text style={[styles.errorText, { color: colors.danger }]}>{errors.recurrenceDay}</Text> : null}
-              </View>
-            )}
-
-            {/* Save button */}
-            <TouchableOpacity
-              style={styles.saveBtn}
-              onPress={handleSave}
-              disabled={loading}
-              activeOpacity={0.85}
-            >
-              <LinearGradient
-                colors={colors.gradientPrimary}
-                style={styles.saveBtnGradient}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 0 }}
-              >
-                {loading
-                  ? <ActivityIndicator color="#fff" />
-                  : <Text style={styles.saveBtnText}>{isEditing ? '✓  Update Expense' : '+ Add Expense'}</Text>
-                }
-              </LinearGradient>
-            </TouchableOpacity>
           </View>
+
+          {/* Date */}
+          <Text style={styles.label}>Date</Text>
+          <TouchableOpacity style={[styles.inputCard, styles.rowBetween]} onPress={() => setShowDatePicker(true)}>
+            <Text style={styles.dateText}>{formatCustomDate(date)}</Text>
+            <CalendarIcon stroke={TEXT_DARK} size={20} />
+          </TouchableOpacity>
+          {showDatePicker && (
+            <DateTimePicker
+              value={new Date(date)}
+              mode="datetime"
+              display="default"
+              maximumDate={new Date()}
+              onChange={onDateChange}
+            />
+          )}
+
+          {/* Payment Method */}
+          <Text style={styles.label}>Payment Method</Text>
+          <DropDownPicker
+            open={payDropOpen}
+            value={paymentMethod}
+            items={payItems}
+            setOpen={setPayDropOpen}
+            setValue={setPaymentMethod}
+            setItems={setPayItems}
+            onOpen={() => setCatDropOpen(false)}
+            style={styles.dropdown}
+            dropDownContainerStyle={styles.dropdownContainer}
+            textStyle={styles.dropdownText}
+            placeholderStyle={{ color: TEXT_MUTED }}
+            placeholder="Select payment method"
+            listMode="MODAL"
+            modalProps={{ animationType: 'slide' }}
+            modalTitle="Select Payment Method"
+          />
+
+          {/* Notes (Optional) */}
+          <Text style={styles.label}>Notes (Optional)</Text>
+          <TextInput
+            style={[styles.inputCard, styles.textArea]}
+            placeholder="What was this for?"
+            placeholderTextColor={TEXT_MUTED}
+            value={description}
+            onChangeText={setDescription}
+            multiline
+            maxLength={120}
+          />
+
         </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>
@@ -285,60 +246,60 @@ export default function AddExpenseScreen({ navigation, route }) {
 }
 
 const styles = StyleSheet.create({
-  safeArea:      { flex: 1 },
-  flex:          { flex: 1 },
-  container:     { padding: SPACING.md, paddingBottom: SPACING.xxl },
+  safeArea: { flex: 1, backgroundColor: BG_APP },
+  flex: { flex: 1 },
   header: {
-    flexDirection: 'row', alignItems: 'center',
-    justifyContent: 'space-between', marginBottom: SPACING.lg,
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    paddingHorizontal: 20, paddingVertical: 12, backgroundColor: BG_APP,
   },
-  backBtn:       { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center', borderWidth: 1 },
-  backIcon:      { fontSize: 20 },
-  headerTitle:   { fontFamily: FONTS.bold, fontSize: FONTS.sizes.lg },
-  amountCard: {
-    borderRadius: RADIUS.xl, padding: SPACING.lg,
-    alignItems: 'center', marginBottom: SPACING.lg,
-    ...SHADOWS.card,
+  iconBtn: { padding: 4 },
+  headerTitle: { fontFamily: FONTS.bold, fontSize: 18, color: TEXT_DARK },
+  
+  container: { padding: 20, paddingBottom: 60 },
+  
+  label: { fontFamily: FONTS.semiBold, fontSize: 13, color: TEXT_DARK, marginBottom: 8, marginTop: 20 },
+  
+  inputCard: {
+    backgroundColor: BG_WHITE,
+    borderRadius: 16,
+    paddingHorizontal: 16,
+    minHeight: 56,
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: BORDER_COLOR,
   },
-  currencyLabel: { fontFamily: FONTS.medium, fontSize: FONTS.sizes.xs, letterSpacing: 2, marginBottom: SPACING.sm },
-  amountRow:     { flexDirection: 'row', alignItems: 'center' },
-  rupeeSym:      { fontFamily: FONTS.bold, fontSize: FONTS.sizes.xxxl, color: 'rgba(255,255,255,0.7)', marginRight: 8 },
-  amountInput:   { fontFamily: FONTS.bold, fontSize: 48, color: '#fff', minWidth: 140, textAlign: 'center' },
-  errorTextHero: { color: '#FF4A5A', fontFamily: FONTS.regular, fontSize: FONTS.sizes.xs, marginTop: 4 },
-  form:          { borderRadius: RADIUS.xl, padding: SPACING.md, borderWidth: 1 },
-  label:         { fontFamily: FONTS.medium, fontSize: FONTS.sizes.sm, marginBottom: 8 },
-  optional:      { fontFamily: FONTS.regular, fontSize: FONTS.sizes.xs },
+  rowBetween: { justifyContent: 'space-between' },
+  
+  rupeeSymbol: { fontFamily: FONTS.bold, fontSize: 18, color: TEXT_DARK },
+  amountInput: { flex: 1, fontFamily: FONTS.bold, fontSize: 18, color: TEXT_DARK },
+  
+  dateText: { fontFamily: FONTS.semiBold, fontSize: 15, color: TEXT_DARK },
+  
+  textArea: {
+    alignItems: 'flex-start',
+    minHeight: 100,
+    paddingVertical: 16,
+    textAlignVertical: 'top',
+    fontFamily: FONTS.medium,
+    fontSize: 15,
+    color: TEXT_DARK,
+  },
+
   dropdown: {
-    borderRadius: RADIUS.md, height: 52, borderWidth: 1
+    backgroundColor: BG_WHITE,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: BORDER_COLOR,
+    minHeight: 56,
   },
   dropdownContainer: {
-    borderRadius: RADIUS.md, borderWidth: 1
-  },
-  dropdownText:  { fontFamily: FONTS.regular, fontSize: FONTS.sizes.md },
-  dateBtn: {
-    flexDirection: 'row', alignItems: 'center',
-    borderRadius: RADIUS.md,
+    backgroundColor: BG_WHITE,
+    borderRadius: 16,
     borderWidth: 1,
-    paddingHorizontal: SPACING.md, height: 52,
+    borderColor: BORDER_COLOR,
   },
-  dateBtnIcon:  { fontSize: 16, marginRight: SPACING.sm },
-  dateBtnText:  { fontFamily: FONTS.medium, fontSize: FONTS.sizes.md },
-  descInput: {
-    borderRadius: RADIUS.md,
-    borderWidth: 1,
-    paddingHorizontal: SPACING.md, paddingVertical: SPACING.sm,
-    fontFamily: FONTS.regular,
-    fontSize: FONTS.sizes.md, minHeight: 72, textAlignVertical: 'top',
-  },
-  recurringRow: {
-    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
-    marginTop: SPACING.md, paddingVertical: SPACING.sm,
-    borderTopWidth: 1,
-  },
-  recurringLabel:    { fontFamily: FONTS.semiBold, fontSize: FONTS.sizes.md },
-  recurringSubLabel: { fontFamily: FONTS.regular, fontSize: FONTS.sizes.xs, marginTop: 2 },
-  saveBtn:           { marginTop: SPACING.lg, borderRadius: RADIUS.md, overflow: 'hidden', ...SHADOWS.button },
-  saveBtnGradient:   { height: 56, alignItems: 'center', justifyContent: 'center' },
-  saveBtnText:       { color: '#fff', fontFamily: FONTS.bold, fontSize: FONTS.sizes.lg },
-  errorText:         { fontFamily: FONTS.regular, fontSize: FONTS.sizes.xs, marginTop: 4 },
+  dropdownText: { fontFamily: FONTS.semiBold, fontSize: 15, color: TEXT_DARK },
+  dropdownIconWrap: { width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center' },
+  dropdownIconText: { fontSize: 16 },
 });

@@ -1,283 +1,300 @@
 import React, { useState, useCallback } from 'react';
-import {
-  View, Text, TouchableOpacity, StyleSheet,
-  FlatList, Alert, ActivityIndicator, ScrollView
-} from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, ScrollView, Dimensions, LayoutAnimation, Platform, UIManager } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { LinearGradient } from 'expo-linear-gradient';
-import DateTimePicker from '@react-native-community/datetimepicker';
-import DropDownPicker from 'react-native-dropdown-picker';
 import { useFocusEffect } from '@react-navigation/native';
-import { LineChart } from 'react-native-gifted-charts';
+import { PieChart, LineChart } from 'react-native-gifted-charts';
+import { Calendar, ChevronLeft, ChevronRight, BarChart2, PieChart as PieChartIcon } from 'lucide-react-native';
 
-import { FONTS, SPACING, RADIUS, SHADOWS } from '../constants/theme';
+import { FONTS, SHADOWS, RADIUS } from '../constants/theme';
 import { useAuth } from '../context/AuthContext';
-import { useTheme } from '../context/ThemeContext';
-import { getExpenses, getCategoriesForUser, getDailyTotals } from '../db/queries';
-import { exportToCSV } from '../utils/csvExport';
-import { formatDate, formatINR, currentMonthStart, todayISO } from '../utils/dateHelpers';
-import ExpenseCard from '../components/ExpenseCard';
+import { getExpenses, getCategoryTotals, getDailyTotals, getMonthlyTotals } from '../db/queries';
+import { formatINR, todayISO, lastNDays, currentMonthStart, currentMonthEnd, currentYearStart } from '../utils/dateHelpers';
+
+const { width: SCREEN_W } = Dimensions.get('window');
+const BRAND_PURPLE = '#6C4CF1';
+const BG_APP = '#F7F8FA';
+const TEXT_DARK = '#1C1C28';
+const TEXT_MUTED = '#8F92A1';
+
+const TABS = ['Daily', 'Weekly', 'Monthly', 'Yearly'];
+const MONTH_LABELS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+function getCurrentMonthKey() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+}
+
+function shiftMonth(key, delta) {
+  const [year, month] = key.split('-').map(Number);
+  const d = new Date(year, month - 1 + delta, 1);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+}
+
+function getMonthDisplay(key) {
+  const [year, month] = key.split('-');
+  return `${MONTH_LABELS[parseInt(month, 10) - 1]} ${year}`;
+}
+
+const PIE_COLORS = ['#6C4CF1', '#10B981', '#F59E0B', '#6B7280', '#4B5563', '#EF4444'];
+
+if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
+  UIManager.setLayoutAnimationEnabledExperimental(true);
+}
 
 export default function ReportsScreen({ navigation }) {
   const { user } = useAuth();
-  const { colors, isDarkMode } = useTheme();
-  
-  const [expenses, setExpenses]   = useState([]);
-  const [chartData, setChartData] = useState([]);
-  const [exporting, setExporting] = useState(false);
+  const [activeTab, setActiveTab] = useState('Monthly');
+  const [monthKey, setMonthKey] = useState(getCurrentMonthKey());
 
-  // Filters
-  const [startDate, setStartDate]   = useState(currentMonthStart());
-  const [endDate, setEndDate]       = useState(todayISO());
-  const [showStart, setShowStart]   = useState(false);
-  const [showEnd, setShowEnd]       = useState(false);
-  
-  const [categoryId, setCategoryId] = useState(null);
-  const [dropOpen, setDropOpen]     = useState(false);
-  const [items, setItems]           = useState([
-    { label: '🔍  All Categories', value: null }
-  ]);
-
-  const totalFiltered = expenses.reduce((s, e) => s + e.amount, 0);
+  const [totalExpenses, setTotalExpenses] = useState(0);
+  const [chartLineData, setChartLineData] = useState([]);
+  const [pieData, setPieData] = useState([]);
+  const [categoryList, setCategoryList] = useState([]);
 
   const loadData = useCallback(() => {
     if (!user) return;
     
-    // Load categories
-    const dbCats = getCategoriesForUser(user.id);
-    setItems([
-      { label: '🔍  All Categories', value: null },
-      ...dbCats.map(c => ({ label: `${c.icon} ${c.name}`, value: c.id }))
-    ]);
+    const [year, month] = monthKey.split('-');
+    let startDate = '';
+    let endDate = '';
+    let lineChartData = [];
 
-    // Load expenses
-    const data = getExpenses({
-      userId: user.id,
-      startDate,
-      endDate,
-      categoryId: categoryId || undefined,
-    });
-    setExpenses(data);
+    const today = new Date();
 
-    // Load chart data
-    const daily = getDailyTotals(user.id, startDate, endDate);
-    if (daily.length > 0) {
-      setChartData(daily.map(d => ({ 
-        value: d.total, 
-        label: d.date.substring(8, 10) // day only
-      })));
-    } else {
-      setChartData([]);
+    if (activeTab === 'Daily') {
+      startDate = todayISO();
+      endDate = todayISO();
+      // Daily line chart could show hours, but since we don't have time, just leave it empty or show a single point.
+    } else if (activeTab === 'Weekly') {
+      const d = new Date();
+      d.setDate(d.getDate() - 6); // Last 7 days
+      startDate = d.toISOString().split('T')[0];
+      endDate = todayISO();
+      
+      const daily = getDailyTotals(user.id, startDate, endDate);
+      lineChartData = daily.map(item => ({
+        value: item.total,
+        label: item.date.substring(5, 10), // MM-DD
+      }));
+    } else if (activeTab === 'Monthly') {
+      startDate = `${year}-${month}-01`;
+      endDate = `${year}-${month}-31`;
+      
+      const daily = getDailyTotals(user.id, startDate, endDate);
+      lineChartData = daily.map(item => ({
+        value: item.total,
+        label: item.date.substring(8, 10), // DD
+      }));
+    } else if (activeTab === 'Yearly') {
+      startDate = `${year}-01-01`;
+      endDate = `${year}-12-31`;
+      
+      const monthly = getMonthlyTotals(user.id, startDate, endDate);
+      lineChartData = monthly.map(item => ({
+        value: item.total,
+        label: MONTH_LABELS[parseInt(item.month.split('-')[1], 10) - 1], // Jan, Feb...
+      }));
     }
-  }, [user?.id, startDate, endDate, categoryId]);
+
+    // Total
+    const exps = getExpenses({ userId: user.id, startDate, endDate });
+    const total = exps.reduce((s, e) => s + e.amount, 0);
+    setTotalExpenses(total);
+    setChartLineData(lineChartData);
+
+    // Category pie chart
+    const cats = getCategoryTotals(user.id, startDate, endDate);
+    const formattedPie = cats.slice(0, 6).map((c, i) => ({
+      value: Math.round(c.total),
+      color: PIE_COLORS[i] || '#8F92A1',
+      label: c.name,
+      pct: total > 0 ? Math.round((c.total / total) * 100) : 0,
+    }));
+    setPieData(formattedPie.length > 0 ? formattedPie : [{ value: 1, color: '#E8EAF0', label: 'No Data', pct: 0 }]);
+    const catsList = cats.slice(0, 6).map((c, i) => ({
+      ...c,
+      color: PIE_COLORS[i] || '#8F92A1',
+      pct: total > 0 ? Math.round((c.total / total) * 100) : 0,
+    }));
+    
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+    setCategoryList(catsList);
+  }, [user, monthKey, activeTab]);
 
   useFocusEffect(useCallback(() => { loadData(); }, [loadData]));
 
-  const handleExport = async () => {
-    if (expenses.length === 0) {
-      Alert.alert('Nothing to export', 'Apply filters to see results first.');
-      return;
-    }
-    setExporting(true);
-    try {
-      await exportToCSV(expenses);
-    } catch (err) {
-      Alert.alert('Export Failed', err.message);
-    } finally {
-      setExporting(false);
-    }
-  };
+  return (
+    <View style={styles.safeArea}>
 
-  const ListHeader = () => (
-    <View>
-      <LinearGradient colors={colors.gradientPrimary} style={styles.header}>
-        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-          <View>
-            <Text style={styles.headerTitle}>Reports & Analytics</Text>
-            <Text style={[styles.headerSub, { color: 'rgba(255,255,255,0.8)' }]}>Filter, analyze & export</Text>
-          </View>
-          <TouchableOpacity onPress={() => navigation.navigate('Calendar')} style={{ padding: 8, backgroundColor: 'rgba(255,255,255,0.2)', borderRadius: 12 }}>
-            <Text style={{ fontSize: 24, color: '#fff' }}>📅</Text>
-          </TouchableOpacity>
-        </View>
-      </LinearGradient>
-
-      {/* Filters card */}
-      <View style={[styles.filterCard, { backgroundColor: colors.bgCard, borderColor: colors.border }]}>
-        <Text style={[styles.filterTitle, { color: colors.textPrimary }]}>🔍  Filter Expenses</Text>
-
-        {/* Date range */}
-        <View style={styles.dateRow}>
-          <View style={styles.dateField}>
-            <Text style={[styles.label, { color: colors.textSecondary }]}>From</Text>
-            <TouchableOpacity style={[styles.dateBtn, { backgroundColor: colors.bgInput, borderColor: colors.border }]} onPress={() => setShowStart(true)}>
-              <Text style={[styles.dateBtnText, { color: colors.textPrimary }]}>📅  {formatDate(startDate)}</Text>
-            </TouchableOpacity>
-          </View>
-          <View style={styles.dateField}>
-            <Text style={[styles.label, { color: colors.textSecondary }]}>To</Text>
-            <TouchableOpacity style={[styles.dateBtn, { backgroundColor: colors.bgInput, borderColor: colors.border }]} onPress={() => setShowEnd(true)}>
-              <Text style={[styles.dateBtnText, { color: colors.textPrimary }]}>📅  {formatDate(endDate)}</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-
-        {showStart && (
-          <DateTimePicker
-            value={new Date(startDate)}
-            mode="date"
-            display="default"
-            maximumDate={new Date(endDate)}
-            onChange={(_, d) => { setShowStart(false); if (d) setStartDate(d.toISOString().split('T')[0]); }}
-          />
-        )}
-        {showEnd && (
-          <DateTimePicker
-            value={new Date(endDate)}
-            mode="date"
-            display="default"
-            minimumDate={new Date(startDate)}
-            maximumDate={new Date()}
-            onChange={(_, d) => { setShowEnd(false); if (d) setEndDate(d.toISOString().split('T')[0]); }}
-          />
-        )}
-
-        {/* Category filter */}
-        <Text style={[styles.label, { marginTop: SPACING.sm, color: colors.textSecondary }]}>Category</Text>
-        <DropDownPicker
-          open={dropOpen}
-          value={categoryId}
-          items={items}
-          setOpen={setDropOpen}
-          setValue={setCategoryId}
-          setItems={setItems}
-          style={[styles.dropdown, { backgroundColor: colors.bgInput, borderColor: colors.border }]}
-          dropDownContainerStyle={[styles.dropdownContainer, { backgroundColor: colors.bgCard, borderColor: colors.border }]}
-          textStyle={[styles.dropdownText, { color: colors.textPrimary }]}
-          theme={isDarkMode ? "DARK" : "LIGHT"}
-          zIndex={3000}
-          listMode="SCROLLVIEW"
-        />
-
-        {/* Summary & Export */}
-        <View style={styles.summaryRow}>
-          <View>
-            <Text style={[styles.summaryLabel, { color: colors.textSecondary }]}>Total ({expenses.length} entries)</Text>
-            <Text style={styles.summaryValue}>{formatINR(totalFiltered)}</Text>
-          </View>
+      {/* Segmented Control */}
+      <View style={styles.segmentWrap}>
+        {TABS.map(tab => (
           <TouchableOpacity
-            style={styles.exportBtn}
-            onPress={handleExport}
-            disabled={exporting}
-            activeOpacity={0.85}
+            key={tab}
+            style={[styles.segmentTab, activeTab === tab && styles.segmentTabActive]}
+            onPress={() => setActiveTab(tab)}
           >
-            <LinearGradient
-              colors={colors.gradientAccent}
-              style={styles.exportBtnGradient}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 0 }}
-            >
-              {exporting
-                ? <ActivityIndicator color="#fff" size="small" />
-                : <Text style={styles.exportBtnText}>⬇️  Export CSV</Text>
-              }
-            </LinearGradient>
+            <Text style={[styles.segmentText, activeTab === tab && styles.segmentTextActive]}>{tab}</Text>
           </TouchableOpacity>
-        </View>
+        ))}
       </View>
 
-      {/* Line Chart */}
-      {chartData.length > 0 && (
-        <View style={[styles.chartCard, { backgroundColor: colors.bgCard, borderColor: colors.border }]}>
-          <Text style={[styles.filterTitle, { color: colors.textPrimary }]}>Spending Trend</Text>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: SPACING.sm }}>
-            <LineChart
-              data={chartData}
-              color={colors.primary}
-              thickness={3}
-              dataPointsColor={colors.accent}
-              xAxisColor={colors.border}
-              yAxisColor={colors.border}
-              yAxisTextStyle={{ color: colors.textSecondary, fontSize: 10 }}
-              xAxisLabelTextStyle={{ color: colors.textSecondary, fontSize: 10 }}
-              spacing={40}
-              initialSpacing={10}
-              isAnimated
-              hideDataPoints={chartData.length > 20}
-            />
-          </ScrollView>
-        </View>
-      )}
+      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
 
-      <Text style={[styles.listTitle, { color: colors.textPrimary }]}>Results</Text>
-    </View>
-  );
-
-  return (
-    <SafeAreaView style={[styles.safeArea, { backgroundColor: colors.bg }]} edges={['top']}>
-      <FlatList
-        data={expenses}
-        keyExtractor={(item) => item.id.toString()}
-        renderItem={({ item }) => (
-          <ExpenseCard expense={item} onEdit={null} onDelete={null} readonly />
-        )}
-        ListHeaderComponent={ListHeader}
-        ListEmptyComponent={
-          <View style={styles.emptyState}>
-            <Text style={styles.emptyEmoji}>📋</Text>
-            <Text style={[styles.emptyTitle, { color: colors.textPrimary }]}>No records found</Text>
-            <Text style={[styles.emptySub, { color: colors.textSecondary }]}>Try adjusting the date range or category</Text>
+        {/* Month/Year Selector (only for Monthly and Yearly) */}
+        {(activeTab === 'Monthly' || activeTab === 'Yearly') && (
+          <View style={styles.monthRow}>
+            <TouchableOpacity onPress={() => setMonthKey(k => shiftMonth(k, activeTab === 'Yearly' ? -12 : -1))}>
+              <ChevronLeft stroke={TEXT_DARK} size={22} />
+            </TouchableOpacity>
+            <Text style={styles.monthLabel}>
+              {activeTab === 'Yearly' ? monthKey.split('-')[0] : getMonthDisplay(monthKey)}
+            </Text>
+            <TouchableOpacity onPress={() => setMonthKey(k => shiftMonth(k, activeTab === 'Yearly' ? 12 : 1))}>
+              <ChevronRight stroke={TEXT_DARK} size={22} />
+            </TouchableOpacity>
           </View>
-        }
-        contentContainerStyle={styles.listContent}
-        showsVerticalScrollIndicator={false}
-      />
-    </SafeAreaView>
+        )}
+
+        {/* Total Expenses Card + Line Chart */}
+        <View style={styles.card}>
+          <Text style={styles.cardLabel}>Total Expenses</Text>
+          <Text style={styles.cardAmount}>{formatINR(totalExpenses)}</Text>
+          {chartLineData.length > 1 ? (
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: 16 }}>
+              <LineChart
+                data={chartLineData}
+                color={BRAND_PURPLE}
+                thickness={2.5}
+                dataPointsColor={BRAND_PURPLE}
+                dataPointsRadius={4}
+                startFillColor={BRAND_PURPLE + '30'}
+                endFillColor="transparent"
+                areaChart
+                xAxisColor="#E8EAF0"
+                yAxisColor="transparent"
+                hideYAxisText
+                xAxisLabelTextStyle={{ color: TEXT_MUTED, fontSize: 10, fontFamily: FONTS.medium }}
+                spacing={Math.max(40, (SCREEN_W - 80) / Math.max(chartLineData.length, 1))}
+                initialSpacing={10}
+                isAnimated
+                curved
+              />
+            </ScrollView>
+          ) : (
+            <View style={styles.emptyWrap}>
+              <View style={styles.emptyIconWrap}>
+                <BarChart2 stroke={BRAND_PURPLE} size={28} opacity={0.6} />
+              </View>
+              <Text style={styles.emptyTitle}>No chart data</Text>
+              <Text style={styles.emptySub}>We don't have enough data to generate a trend line for this period.</Text>
+            </View>
+          )}
+        </View>
+
+        {/* Spending by Category */}
+        <View style={styles.card}>
+          <Text style={styles.cardSectionTitle}>Spending by Category</Text>
+          <View style={styles.pieSection}>
+            {/* Donut */}
+            <PieChart
+              data={pieData}
+              donut
+              radius={80}
+              innerRadius={55}
+              centerLabelComponent={() => (
+                <View style={styles.pieCenter}>
+                  <Text style={styles.pieCenterAmount}>{formatINR(totalExpenses).replace('.00', '')}</Text>
+                  <Text style={styles.pieCenterSub}>Total</Text>
+                </View>
+              )}
+              strokeColor={BG_APP}
+              strokeWidth={3}
+              isAnimated
+            />
+          </View>
+
+          {/* Legend table */}
+          <View style={styles.legendTable}>
+            {categoryList.map((cat, i) => (
+              <View key={i} style={styles.legendRow}>
+                <View style={styles.legendLeft}>
+                  <View style={[styles.legendDot, { backgroundColor: cat.color }]} />
+                  <Text style={styles.legendLabel} numberOfLines={1}>{cat.name}</Text>
+                </View>
+                <Text style={styles.legendAmount}>{formatINR(cat.total)}</Text>
+                <Text style={[styles.legendPct, { color: cat.color }]}>{cat.pct}%</Text>
+              </View>
+            ))}
+            {categoryList.length === 0 && (
+              <View style={styles.emptyWrap}>
+                <View style={styles.emptyIconWrap}>
+                  <PieChartIcon stroke={BRAND_PURPLE} size={28} opacity={0.6} />
+                </View>
+                <Text style={styles.emptyTitle}>No spending recorded</Text>
+              </View>
+            )}
+          </View>
+        </View>
+
+      </ScrollView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  safeArea:      { flex: 1 },
-  header:        { padding: SPACING.lg, paddingBottom: SPACING.md },
-  headerTitle:   { fontFamily: FONTS.bold, fontSize: FONTS.sizes.xxl, color: '#fff' },
-  headerSub:     { fontFamily: FONTS.regular, fontSize: FONTS.sizes.sm, marginTop: 4 },
-  filterCard: {
-    borderRadius: RADIUS.xl,
-    marginHorizontal: SPACING.md, marginBottom: SPACING.md,
-    padding: SPACING.md, borderWidth: 1,
+  safeArea: { flex: 1, backgroundColor: BG_APP },
+
+  header: {
+    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
+    paddingHorizontal: 20, paddingVertical: 14,
   },
-  chartCard: {
-    borderRadius: RADIUS.xl,
-    marginHorizontal: SPACING.md, marginBottom: SPACING.md,
-    padding: SPACING.md, borderWidth: 1,
+  headerTitle: { fontFamily: FONTS.bold, fontSize: FONTS.sizes.xxl, color: TEXT_DARK },
+  iconBtn: { padding: 6, borderRadius: RADIUS.md, backgroundColor: '#FFF', ...SHADOWS.card },
+
+  segmentWrap: {
+    flexDirection: 'row',
+    marginHorizontal: 20, marginBottom: 16,
+    backgroundColor: '#EDEEF5',
+    borderRadius: RADIUS.full,
+    padding: 4,
   },
-  filterTitle:   { fontFamily: FONTS.semiBold, fontSize: FONTS.sizes.md, marginBottom: SPACING.sm },
-  dateRow:       { flexDirection: 'row', gap: SPACING.sm },
-  dateField:     { flex: 1 },
-  label:         { fontFamily: FONTS.medium, fontSize: FONTS.sizes.xs, marginBottom: 6 },
-  dateBtn: {
-    borderRadius: RADIUS.md, borderWidth: 1,
-    paddingHorizontal: SPACING.sm, height: 44,
-    justifyContent: 'center',
+  segmentTab: { flex: 1, paddingVertical: 8, borderRadius: RADIUS.full, alignItems: 'center' },
+  segmentTabActive: { backgroundColor: '#FFF', ...SHADOWS.card },
+  segmentText: { fontFamily: FONTS.semiBold, fontSize: 12, color: TEXT_MUTED },
+  segmentTextActive: { color: BRAND_PURPLE, fontFamily: FONTS.bold },
+
+  content: { paddingHorizontal: 20, paddingBottom: 100 },
+
+  monthRow: {
+    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
+    marginBottom: 16,
   },
-  dateBtnText:   { fontFamily: FONTS.medium, fontSize: FONTS.sizes.xs },
-  dropdown: {
-    borderRadius: RADIUS.md, height: 48, borderWidth: 1
+  monthLabel: { fontFamily: FONTS.bold, fontSize: FONTS.sizes.md, color: TEXT_DARK },
+
+  card: {
+    backgroundColor: '#FFF', borderRadius: RADIUS.xl,
+    padding: 20, marginBottom: 16, ...SHADOWS.card,
   },
-  dropdownContainer: {
-    borderRadius: RADIUS.md, borderWidth: 1
-  },
-  dropdownText:  { fontFamily: FONTS.regular, fontSize: FONTS.sizes.sm },
-  summaryRow:    { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: SPACING.md },
-  summaryLabel:  { fontFamily: FONTS.regular, fontSize: FONTS.sizes.xs },
-  summaryValue:  { fontFamily: FONTS.bold, fontSize: FONTS.sizes.lg, color: '#10B981' },
-  exportBtn:     { borderRadius: RADIUS.md, overflow: 'hidden', ...SHADOWS.button },
-  exportBtnGradient:{ paddingHorizontal: SPACING.md, height: 44, alignItems: 'center', justifyContent: 'center' },
-  exportBtnText: { color: '#fff', fontFamily: FONTS.bold, fontSize: FONTS.sizes.sm },
-  listTitle:     { fontFamily: FONTS.semiBold, fontSize: FONTS.sizes.md, marginHorizontal: SPACING.md, marginBottom: SPACING.xs },
-  listContent:   { paddingBottom: SPACING.xxl },
-  emptyState:    { alignItems: 'center', paddingVertical: SPACING.xxl },
-  emptyEmoji:    { fontSize: 48 },
-  emptyTitle:    { fontFamily: FONTS.semiBold, fontSize: FONTS.sizes.lg, marginTop: SPACING.md },
-  emptySub:      { fontFamily: FONTS.regular, fontSize: FONTS.sizes.sm, marginTop: SPACING.xs },
+  cardLabel: { fontFamily: FONTS.semiBold, fontSize: FONTS.sizes.sm, color: TEXT_MUTED, marginBottom: 4 },
+  cardAmount: { fontFamily: FONTS.bold, fontSize: FONTS.sizes.xxxl, color: TEXT_DARK },
+  cardSectionTitle: { fontFamily: FONTS.bold, fontSize: FONTS.sizes.lg, color: TEXT_DARK, marginBottom: 16 },
+
+  emptyWrap: { alignItems: 'center', paddingVertical: 30, paddingHorizontal: 20 },
+  emptyIconWrap: { width: 64, height: 64, borderRadius: 32, backgroundColor: BRAND_PURPLE + '12', alignItems: 'center', justifyContent: 'center', marginBottom: 12 },
+  emptyTitle: { fontFamily: FONTS.bold, fontSize: FONTS.sizes.md, color: TEXT_DARK },
+  emptySub: { fontFamily: FONTS.medium, fontSize: FONTS.sizes.sm, color: TEXT_MUTED, marginTop: 4, textAlign: 'center', lineHeight: 20 },
+
+  pieSection: { alignItems: 'center', marginBottom: 20 },
+  pieCenter: { alignItems: 'center' },
+  pieCenterAmount: { fontFamily: FONTS.bold, fontSize: FONTS.sizes.lg, color: TEXT_DARK },
+  pieCenterSub: { fontFamily: FONTS.medium, fontSize: FONTS.sizes.sm, color: TEXT_MUTED, marginTop: 2 },
+
+  legendTable: { gap: 10 },
+  legendRow: { flexDirection: 'row', alignItems: 'center' },
+  legendLeft: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 10 },
+  legendDot: { width: 10, height: 10, borderRadius: 5 },
+  legendLabel: { fontFamily: FONTS.semiBold, fontSize: FONTS.sizes.sm, color: TEXT_DARK, flex: 1 },
+  legendAmount: { fontFamily: FONTS.bold, fontSize: FONTS.sizes.sm, color: TEXT_DARK, width: 90, textAlign: 'right' },
+  legendPct: { fontFamily: FONTS.bold, fontSize: FONTS.sizes.sm, width: 40, textAlign: 'right' },
 });

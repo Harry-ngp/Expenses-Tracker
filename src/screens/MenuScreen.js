@@ -1,104 +1,183 @@
 import React from 'react';
 import { View, Text, StyleSheet, Switch, TouchableOpacity, ScrollView, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useNavigation } from '@react-navigation/native';
+import {
+  PieChart, BarChart2, Tag, CreditCard, HardDrive,
+  Download, Settings, HelpCircle, Info, LogOut, ChevronRight, Calendar, Bell
+} from 'lucide-react-native';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
-import { FONTS, SPACING, RADIUS } from '../constants/theme';
+import { FONTS, SHADOWS, RADIUS } from '../constants/theme';
+
+const BRAND_PURPLE = '#6C4CF1';
+const BG_APP = '#F7F8FA';
+const TEXT_DARK = '#1C1C28';
+const TEXT_MUTED = '#8F92A1';
+
+const MenuRow = ({ icon: Icon, iconColor, label, onPress, rightElement }) => (
+  <TouchableOpacity style={styles.menuRow} onPress={onPress} activeOpacity={0.7}>
+    <View style={[styles.menuIconWrap, { backgroundColor: iconColor + '18' }]}>
+      <Icon stroke={iconColor} size={20} />
+    </View>
+    <Text style={styles.menuLabel}>{label}</Text>
+    <View style={styles.menuRight}>
+      {rightElement || <ChevronRight stroke={TEXT_MUTED} size={18} />}
+    </View>
+  </TouchableOpacity>
+);
 
 export default function MenuScreen() {
   const { user, logout } = useAuth();
-  const { isDarkMode, toggleTheme, colors } = useTheme();
+  const { isDarkMode, toggleTheme } = useTheme();
+  const navigation = useNavigation();
+
+  const initials = user?.username
+    ? user.username.substring(0, 2).toUpperCase()
+    : 'JD';
 
   const handleLogout = () => {
     Alert.alert('Logout', 'Are you sure you want to log out?', [
       { text: 'Cancel', style: 'cancel' },
-      { text: 'Logout', style: 'destructive', onPress: logout }
+      { text: 'Logout', style: 'destructive', onPress: logout },
     ]);
   };
 
   return (
-    <SafeAreaView style={[styles.safeArea, { backgroundColor: colors.bg }]} edges={['top']}>
-      <View style={[styles.header, { borderBottomColor: colors.border }]}>
-        <Text style={[styles.title, { color: colors.textPrimary }]}>More Options</Text>
-      </View>
+    <View style={styles.safeArea}>
+      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
 
-      <ScrollView contentContainerStyle={styles.content}>
         {/* Profile Card */}
-        <View style={[styles.card, { backgroundColor: colors.bgCard, borderColor: colors.border }]}>
-          <Text style={[styles.cardTitle, { color: colors.textPrimary }]}>Profile</Text>
-          <Text style={[styles.cardText, { color: colors.textSecondary }]}>Username: {user?.username}</Text>
-          <Text style={[styles.cardText, { color: colors.textSecondary }]}>Email: {user?.email}</Text>
-        </View>
-
-        {/* Settings */}
-        <Text style={[styles.sectionTitle, { color: colors.textSecondary }]}>Settings</Text>
-        <View style={[styles.card, { backgroundColor: colors.bgCard, borderColor: colors.border }]}>
-          <View style={styles.settingRow}>
-            <View style={styles.settingLabelRow}>
-              <Text style={styles.settingIcon}>🎨</Text>
-              <Text style={[styles.settingText, { color: colors.textPrimary }]}>Dark Mode</Text>
-            </View>
-            <Switch
-              value={isDarkMode}
-              onValueChange={toggleTheme}
-              trackColor={{ false: colors.border, true: colors.primary }}
-              thumbColor={isDarkMode ? '#fff' : colors.textMuted}
-            />
+        <View style={styles.profileCard}>
+          <View style={styles.avatar}>
+            <Text style={styles.avatarText}>{initials}</Text>
           </View>
-          <View style={[styles.divider, { backgroundColor: colors.border }]} />
-          <TouchableOpacity style={styles.settingRow} onPress={() => Alert.alert('Coming Soon', 'Backup feature is not implemented yet.')}>
-            <View style={styles.settingLabelRow}>
-              <Text style={styles.settingIcon}>☁️</Text>
-              <Text style={[styles.settingText, { color: colors.textPrimary }]}>Backup Data</Text>
-            </View>
-            <Text style={[styles.arrow, { color: colors.textMuted }]}>›</Text>
-          </TouchableOpacity>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.profileName}>{user?.username || 'John Doe'}</Text>
+            <Text style={styles.profileEmail}>{user?.email || 'user@example.com'}</Text>
+          </View>
         </View>
 
-        {/* Support */}
-        <Text style={[styles.sectionTitle, { color: colors.textSecondary }]}>Support</Text>
-        <View style={[styles.card, { backgroundColor: colors.bgCard, borderColor: colors.border }]}>
-          <TouchableOpacity style={styles.settingRow} onPress={() => Alert.alert('Help', 'Visit our website for help.')}>
-            <View style={styles.settingLabelRow}>
-              <Text style={styles.settingIcon}>❓</Text>
-              <Text style={[styles.settingText, { color: colors.textPrimary }]}>Help & FAQ</Text>
-            </View>
-            <Text style={[styles.arrow, { color: colors.textMuted }]}>›</Text>
-          </TouchableOpacity>
-          <View style={[styles.divider, { backgroundColor: colors.border }]} />
-          <TouchableOpacity style={styles.settingRow} onPress={() => Alert.alert('Contact', 'Email support@example.com')}>
-            <View style={styles.settingLabelRow}>
-              <Text style={styles.settingIcon}>✉️</Text>
-              <Text style={[styles.settingText, { color: colors.textPrimary }]}>Contact Us</Text>
-            </View>
-            <Text style={[styles.arrow, { color: colors.textMuted }]}>›</Text>
-          </TouchableOpacity>
+        {/* Menu Rows */}
+        <View style={styles.section}>
+          <MenuRow
+            icon={PieChart} iconColor={BRAND_PURPLE} label="Budget"
+            onPress={() => navigation.navigate('Budget')}
+          />
+          <View style={styles.divider} />
+          <MenuRow
+            icon={Calendar} iconColor="#F59E0B" label="Calendar View"
+            onPress={() => navigation.navigate('Calendar')}
+          />
+          <View style={styles.divider} />
+          <MenuRow
+            icon={BarChart2} iconColor="#10B981" label="Reports"
+            onPress={() => navigation.navigate('Reports')}
+          />
+          <View style={styles.divider} />
+          <MenuRow
+            icon={Bell} iconColor="#10B981" label="Notifications"
+            onPress={() => navigation.navigate('Notifications')}
+          />
+          <View style={styles.divider} />
+          <MenuRow
+            icon={Tag} iconColor="#F59E0B" label="Categories"
+            onPress={() => Alert.alert('Coming Soon', 'Category management coming soon.')}
+          />
+          <View style={styles.divider} />
+          <MenuRow
+            icon={CreditCard} iconColor="#3F8CFF" label="Payment Methods"
+            onPress={() => Alert.alert('Coming Soon', 'Payment method management coming soon.')}
+          />
+          <View style={styles.divider} />
+          <MenuRow
+            icon={HardDrive} iconColor="#6B7280" label="Backup & Restore"
+            onPress={() => Alert.alert('Coming Soon', 'Backup & Restore coming soon.')}
+          />
+          <View style={styles.divider} />
+          <MenuRow
+            icon={Download} iconColor="#8B5CF6" label="Export Data"
+            onPress={() => Alert.alert('Coming Soon', 'Data export coming soon.')}
+          />
+        </View>
+
+        <View style={styles.section}>
+          <MenuRow
+            icon={Settings} iconColor={TEXT_DARK} label="Dark Mode"
+            onPress={toggleTheme}
+            rightElement={
+              <Switch
+                value={isDarkMode}
+                onValueChange={toggleTheme}
+                trackColor={{ false: '#E8EAF0', true: BRAND_PURPLE }}
+                thumbColor="#FFF"
+                style={{ transform: [{ scaleX: 0.85 }, { scaleY: 0.85 }] }}
+              />
+            }
+          />
+          <View style={styles.divider} />
+          <MenuRow
+            icon={HelpCircle} iconColor="#F59E0B" label="Help & Support"
+            onPress={() => Alert.alert('Help', 'For help, visit our support page.')}
+          />
+          <View style={styles.divider} />
+          <MenuRow
+            icon={Info} iconColor="#3F8CFF" label="About App"
+            onPress={() => Alert.alert('LocalBite AI Expense Tracker', 'Version 1.0.0\nBuilt with ❤️ using React Native & Expo')}
+          />
         </View>
 
         {/* Logout */}
-        <TouchableOpacity style={styles.logoutBtn} onPress={handleLogout}>
-          <Text style={[styles.logoutText, { color: colors.danger }]}>Log Out</Text>
+        <TouchableOpacity style={styles.logoutBtn} onPress={handleLogout} activeOpacity={0.8}>
+          <LogOut stroke="#EF4444" size={20} />
+          <Text style={styles.logoutText}>Log Out</Text>
         </TouchableOpacity>
+
       </ScrollView>
-    </SafeAreaView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  safeArea: { flex: 1 },
-  header: { padding: SPACING.md, borderBottomWidth: 1 },
-  title: { fontFamily: FONTS.bold, fontSize: FONTS.sizes.xxl },
-  content: { padding: SPACING.md, paddingBottom: 100 },
-  card: { borderRadius: RADIUS.lg, borderWidth: 1, padding: SPACING.md, marginBottom: SPACING.lg },
-  cardTitle: { fontFamily: FONTS.semiBold, fontSize: FONTS.sizes.lg, marginBottom: 8 },
-  cardText: { fontFamily: FONTS.regular, fontSize: FONTS.sizes.md, marginBottom: 4 },
-  sectionTitle: { fontFamily: FONTS.medium, fontSize: FONTS.sizes.sm, marginBottom: 8, marginLeft: 4, textTransform: 'uppercase', letterSpacing: 1 },
-  settingRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: SPACING.sm },
-  settingLabelRow: { flexDirection: 'row', alignItems: 'center' },
-  settingIcon: { fontSize: 20, marginRight: SPACING.sm },
-  settingText: { fontFamily: FONTS.medium, fontSize: FONTS.sizes.md },
-  divider: { height: 1, marginVertical: SPACING.xs },
-  arrow: { fontSize: 24, fontFamily: FONTS.regular, marginBottom: 4 },
-  logoutBtn: { alignItems: 'center', marginTop: SPACING.xl, padding: SPACING.md },
-  logoutText: { fontFamily: FONTS.bold, fontSize: FONTS.sizes.lg },
+  safeArea: { flex: 1, backgroundColor: BG_APP },
+  content: { padding: 20, paddingBottom: 100 },
+
+  profileCard: {
+    backgroundColor: '#FFF', borderRadius: RADIUS.xl,
+    padding: 20, flexDirection: 'row', alignItems: 'center',
+    marginBottom: 24, gap: 16, ...SHADOWS.card,
+  },
+  avatar: {
+    width: 64, height: 64, borderRadius: 32,
+    backgroundColor: BRAND_PURPLE,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  avatarText: { fontFamily: FONTS.bold, fontSize: FONTS.sizes.xl, color: '#FFF' },
+  profileName: { fontFamily: FONTS.bold, fontSize: FONTS.sizes.lg, color: TEXT_DARK },
+  profileEmail: { fontFamily: FONTS.medium, fontSize: FONTS.sizes.sm, color: TEXT_MUTED, marginTop: 3 },
+
+  section: {
+    backgroundColor: '#FFF', borderRadius: RADIUS.xl,
+    marginBottom: 16, overflow: 'hidden', ...SHADOWS.card,
+  },
+  divider: { height: 1, backgroundColor: '#F3F4F6', marginHorizontal: 16 },
+
+  menuRow: {
+    flexDirection: 'row', alignItems: 'center',
+    paddingHorizontal: 16, paddingVertical: 14,
+  },
+  menuIconWrap: {
+    width: 38, height: 38, borderRadius: RADIUS.md,
+    alignItems: 'center', justifyContent: 'center',
+    marginRight: 14,
+  },
+  menuLabel: { flex: 1, fontFamily: FONTS.semiBold, fontSize: FONTS.sizes.md, color: TEXT_DARK },
+  menuRight: { marginLeft: 8 },
+
+  logoutBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    backgroundColor: '#FFF', borderRadius: RADIUS.xl,
+    paddingVertical: 16, gap: 10, ...SHADOWS.card,
+  },
+  logoutText: { fontFamily: FONTS.bold, fontSize: FONTS.sizes.md, color: '#EF4444' },
 });

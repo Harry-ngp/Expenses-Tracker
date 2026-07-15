@@ -34,13 +34,13 @@ export const updateMonthlyBudget = (userId, budget) => {
 /**
  * Insert a new expense. Returns the new row id.
  */
-export const addExpense = ({ userId, categoryId, amount, description, date, isRecurring, recurrenceDay, paymentMethod }) => {
+export const addExpense = ({ userId, categoryId, amount, description, date, paymentMethod }) => {
   const db = getDb();
   const result = db.runSync(
     `INSERT INTO expenses
-       (user_id, category_id, amount, description, date, is_recurring, recurrence_day, payment_method, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now'));`,
-    [userId, categoryId, amount, description || null, date, isRecurring ? 1 : 0, recurrenceDay || null, paymentMethod || 'Cash']
+       (user_id, category_id, amount, description, date, payment_method, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, datetime('now'));`,
+    [userId, categoryId, amount, description || null, date, paymentMethod || 'Cash']
   );
   return result.lastInsertRowId;
 };
@@ -48,14 +48,13 @@ export const addExpense = ({ userId, categoryId, amount, description, date, isRe
 /**
  * Update an existing expense row.
  */
-export const updateExpense = ({ id, categoryId, amount, description, date, isRecurring, recurrenceDay, paymentMethod }) => {
+export const updateExpense = ({ id, categoryId, amount, description, date, paymentMethod }) => {
   const db = getDb();
   db.runSync(
     `UPDATE expenses
-     SET category_id = ?, amount = ?, description = ?, date = ?,
-         is_recurring = ?, recurrence_day = ?, payment_method = ?, updated_at = datetime('now')
+     SET category_id = ?, amount = ?, description = ?, date = ?, payment_method = ?, updated_at = datetime('now')
      WHERE id = ?;`,
-    [categoryId, amount, description || null, date, isRecurring ? 1 : 0, recurrenceDay || null, paymentMethod || 'Cash', id]
+    [categoryId, amount, description || null, date, paymentMethod || 'Cash', id]
   );
 };
 
@@ -119,6 +118,22 @@ export const getDailyTotals = (userId, startDate, endDate) => {
      WHERE user_id = ? AND date BETWEEN ? AND ?
      GROUP BY date
      ORDER BY date ASC;`,
+    [userId, startDate, endDate]
+  );
+};
+
+/**
+ * Returns monthly totals for a date range (e.g. for a year) — for charts.
+ * Result: [{ month: 'YYYY-MM', total: number }, ...]
+ */
+export const getMonthlyTotals = (userId, startDate, endDate) => {
+  const db = getDb();
+  return db.getAllSync(
+    `SELECT strftime('%Y-%m', date) as month, SUM(amount) as total
+     FROM expenses
+     WHERE user_id = ? AND date BETWEEN ? AND ?
+     GROUP BY month
+     ORDER BY month ASC;`,
     [userId, startDate, endDate]
   );
 };
@@ -205,21 +220,7 @@ export const processRecurringExpenses = (userId) => {
   }
 };
 
-/**
- * Monthly totals for bar chart (last 12 months)
- */
-export const getMonthlyTotals = (userId) => {
-  const db = getDb();
-  return db.getAllSync(
-    `SELECT strftime('%Y-%m', date) as month, SUM(amount) as total
-     FROM expenses
-     WHERE user_id = ?
-       AND date >= date('now', '-11 months', 'start of month')
-     GROUP BY month
-     ORDER BY month ASC;`,
-    [userId]
-  );
-};
+
 
 // ═══════════════════════════════════════════════════════════════
 //  CATEGORY & BUDGET QUERIES

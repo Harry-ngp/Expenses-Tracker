@@ -1,15 +1,44 @@
 import React, { useState, useCallback } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, RefreshControl } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, RefreshControl, Animated, LayoutAnimation, Platform, UIManager } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
-import { PieChart } from 'react-native-gifted-charts';
+import { Settings2, ChevronDown, Plus, PiggyBank } from 'lucide-react-native';
 
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
 import { FONTS, SPACING, RADIUS, SHADOWS } from '../constants/theme';
-import { getCategoryBudgets, getCategoryTotals, getCategoriesForUser } from '../db/queries';
+import { getCategoryBudgets, getCategoryTotals, getCategoriesForUser, getMonthlyTotal } from '../db/queries';
 import { formatINR, currentMonthStart, todayISO, currentMonthKey } from '../utils/dateHelpers';
-import { getMonthlyTotal } from '../db/queries';
+import DropDownPicker from 'react-native-dropdown-picker';
+
+const BRAND_PURPLE = '#6C4CF1';
+const BG_APP = '#F7F8FA';
+const TEXT_DARK = '#1C1C28';
+const TEXT_MUTED = '#8F92A1';
+
+const MONTH_LABELS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+function generateMonthOptions() {
+  const options = [];
+  const now = new Date();
+  for (let i = 0; i < 12; i++) {
+    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+    const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+    const label = `${MONTH_LABELS[d.getMonth()]} ${d.getFullYear()}`;
+    options.push({ label, value: key });
+  }
+  return options;
+}
+
+function getMonthDisplay(key) {
+  if (!key) return '';
+  const [year, month] = key.split('-');
+  return `${MONTH_LABELS[parseInt(month, 10) - 1]} ${year}`;
+}
+
+if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
+  UIManager.setLayoutAnimationEnabledExperimental(true);
+}
 
 export default function BudgetOverviewScreen() {
   const { user } = useAuth();
@@ -20,17 +49,23 @@ export default function BudgetOverviewScreen() {
   const [categoryTotals, setCategoryTotals] = useState({});
   const [monthTotal, setMonthTotal] = useState(0);
   const [refreshing, setRefreshing] = useState(false);
+  const [selectedMonth, setSelectedMonth] = useState(generateMonthOptions()[0].value);
+  
+  const [monthDropOpen, setMonthDropOpen] = useState(false);
+  const [monthItems, setMonthItems] = useState(generateMonthOptions());
 
   const loadData = useCallback(() => {
     if (!user) return;
-    
-    // Overall month total
-    const total = getMonthlyTotal(user.id, currentMonthKey());
+    const total = getMonthlyTotal(user.id, selectedMonth);
     setMonthTotal(total);
+
+    const [year, month] = selectedMonth.split('-');
+    const startDate = `${year}-${month}-01`;
+    const endDate = `${year}-${month}-31`;
 
     const allCats = getCategoriesForUser(user.id);
     const budgets = getCategoryBudgets(user.id);
-    const totals = getCategoryTotals(user.id, currentMonthStart(), todayISO());
+    const totals = getCategoryTotals(user.id, startDate, endDate);
 
     const totalsMap = {};
     totals.forEach(t => { totalsMap[t.id] = t.total; });
@@ -38,193 +73,277 @@ export default function BudgetOverviewScreen() {
 
     const merged = allCats.map(c => {
       const b = budgets.find(bdg => bdg.category_id === c.id);
-      return {
-        ...c,
-        budget: b ? b.budget : 0
-      };
+      return { ...c, budget: b ? b.budget : 0 };
     });
+
+    const relevant = merged.filter(c => c.budget > 0 || totalsMap[c.id] > 0);
     
-    // Only show categories that have a budget set, or just show all. Let's show all that have a budget or some spending.
-    const relevantCats = merged.filter(c => c.budget > 0 || (totalsMap[c.id] > 0));
-    setCategories(relevantCats);
-  }, [user]);
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+    setCategories(relevant);
+  }, [user, selectedMonth]);
 
   useFocusEffect(useCallback(() => { loadData(); }, [loadData]));
 
   const overallBudget = user?.monthly_budget || 0;
-  const isBudgetSet = overallBudget > 0;
-  
-  // Data for the Donut Chart
-  let pieData = [];
-  let centerText = "";
-  let centerSub = "";
+  const isExceeded = overallBudget > 0 && monthTotal > overallBudget;
+  const overAmount = isExceeded ? monthTotal - overallBudget : 0;
+  const pct = overallBudget > 0 ? Math.min(Math.round((monthTotal / overallBudget) * 100), 100) : 0;
 
-  if (isBudgetSet) {
-    const spent = monthTotal;
-    const remaining = Math.max(overallBudget - spent, 0);
-    const exceeded = spent > overallBudget;
+  // Progress bar color
+  let barColor = '#10B981';
+  if (pct >= 90) barColor = '#EF4444';
+  else if (pct >= 70) barColor = '#F59E0B';
 
-    pieData = [
-      { value: spent, color: exceeded ? colors.danger : colors.primary },
-      { value: remaining, color: colors.bgInput }
-    ];
-    centerText = formatINR(spent).replace('.00', '');
-    centerSub = `of ${formatINR(overallBudget).replace('.00', '')}`;
-  } else {
-    // If no budget, just show a full circle representing total spent
-    pieData = [
-      { value: monthTotal > 0 ? monthTotal : 1, color: colors.primary }
-    ];
-    centerText = formatINR(monthTotal).replace('.00', '');
-    centerSub = "Total Spent";
-  }
+  const remaining = Math.max(overallBudget - monthTotal, 0);
 
   return (
-    <SafeAreaView style={[styles.safeArea, { backgroundColor: colors.bg }]} edges={['top']}>
-      <View style={[styles.header, { borderBottomColor: colors.border }]}>
-        <Text style={[styles.title, { color: colors.textPrimary }]}>Budget overview</Text>
-        <TouchableOpacity onPress={() => navigation.navigate('BudgetSettings')}>
-          <Text style={{ fontSize: 22, color: colors.textPrimary }}>⚙️</Text>
-        </TouchableOpacity>
-      </View>
+    <View style={styles.safeArea}>
 
       <ScrollView
         contentContainerStyle={styles.content}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); loadData(); setRefreshing(false); }} tintColor={colors.primary} />}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); loadData(); setRefreshing(false); }} tintColor={BRAND_PURPLE} />}
         showsVerticalScrollIndicator={false}
       >
-        {/* Main Budget Donut */}
-        <View style={[styles.chartCard, { backgroundColor: colors.bgCard, borderColor: colors.border }]}>
-          <Text style={[styles.chartTitle, { color: colors.textPrimary }]}>Monthly Budget</Text>
-          <View style={styles.chartContainer}>
-            <PieChart
-              data={pieData}
-              donut
-              radius={80}
-              innerRadius={65}
-              centerLabelComponent={() => (
-                <View style={styles.pieCenter}>
-                  <Text style={[styles.pieCenterText, { color: colors.textPrimary }]}>{centerText}</Text>
-                  <Text style={[styles.pieCenterSub, { color: colors.textSecondary }]}>{centerSub}</Text>
-                </View>
-              )}
-              strokeColor={colors.bgCard}
-              strokeWidth={2}
-            />
-          </View>
-          
-          {!isBudgetSet && (
-             <TouchableOpacity style={[styles.setBudgetBtn, { backgroundColor: colors.primary }]} onPress={() => navigation.navigate('BudgetSettings')}>
-               <Text style={styles.setBudgetBtnText}>Set a Monthly Budget</Text>
-             </TouchableOpacity>
-          )}
-          {isBudgetSet && monthTotal > overallBudget && (
-            <View style={[styles.alertBox, { backgroundColor: colors.danger + '22', borderColor: colors.danger }]}>
-              <Text style={[styles.alertText, { color: colors.danger }]}>⚠️ You have exceeded your monthly budget!</Text>
+
+        {/* Budget Exceeded Alert Card */}
+        {isExceeded && (
+          <View style={styles.alertCard}>
+            <View style={styles.alertLeft}>
+              <Text style={styles.alertTitle}>⚠️  Budget Exceeded</Text>
+              <Text style={styles.alertSub}>You have exceeded your monthly budget</Text>
+              <Text style={styles.alertOverAmount}>{formatINR(overAmount)}</Text>
+              <Text style={styles.alertOverLabel}>over-budget</Text>
             </View>
-          )}
-        </View>
-
-        {/* Category Breakdown */}
-        <View style={styles.sectionHeader}>
-          <Text style={[styles.sectionTitle, { color: colors.textPrimary }]}>Category Limits</Text>
-        </View>
-        
-        {categories.length === 0 ? (
-          <Text style={[styles.emptyText, { color: colors.textSecondary }]}>No category budgets or spending yet.</Text>
-        ) : (
-          categories.map(cat => {
-            const spent = categoryTotals[cat.id] || 0;
-            const limit = cat.budget || 0;
-            
-            // If no limit set for this category, we just show how much is spent with a full bar or grey bar.
-            const hasLimit = limit > 0;
-            const actualPct = hasLimit ? Math.round((spent / limit) * 100) : 0;
-            const fillWidth = hasLimit ? Math.min(actualPct, 100) : 100; // 100% fill but different color if no limit
-
-            return (
-              <View key={cat.id} style={[styles.catCard, { backgroundColor: colors.bgCard, borderColor: colors.border }]}>
-                <View style={styles.catHeader}>
-                  <View style={styles.catNameRow}>
-                    <View style={[styles.iconWrap, { backgroundColor: (cat.color || colors.primary) + '22' }]}>
-                      <Text style={styles.icon}>{cat.icon}</Text>
-                    </View>
-                    <Text style={[styles.catName, { color: colors.textPrimary }]}>{cat.name}</Text>
-                  </View>
-                  <View style={{ alignItems: 'flex-end' }}>
-                    <Text style={[styles.catSpent, { color: colors.textPrimary }]}>{formatINR(spent)}</Text>
-                    {hasLimit && (
-                      <Text style={[styles.catLimit, { color: colors.textSecondary }]}>of {formatINR(limit)}</Text>
-                    )}
-                  </View>
-                </View>
-
-                {hasLimit ? (
-                  <View style={[styles.progressBarBg, { backgroundColor: colors.bgInput }]}>
-                    <View style={[styles.progressBarFill, { width: `${fillWidth}%`, backgroundColor: actualPct >= 100 ? colors.danger : colors.primary }]} />
-                  </View>
-                ) : (
-                  <View style={[styles.progressBarBg, { backgroundColor: colors.bgInput }]}>
-                    <View style={[styles.progressBarFill, { width: `100%`, backgroundColor: colors.border }]} />
-                  </View>
-                )}
-                
-                {hasLimit && (
-                  <Text style={[styles.progressText, { color: actualPct >= 100 ? colors.danger : colors.textSecondary }]}>
-                    {actualPct >= 100 ? `Exceeded by ${actualPct - 100}%` : `${actualPct}% used`}
-                  </Text>
-                )}
-              </View>
-            );
-          })
+          </View>
         )}
+
+        {/* Monthly Budget Card */}
+        {overallBudget > 0 ? (
+          <View style={[styles.budgetCard, { zIndex: 1000 }]}>
+            <View style={styles.budgetRow}>
+              <View>
+                <Text style={styles.budgetLabel}>Monthly Budget</Text>
+                <Text style={styles.budgetOfLabel}>of {formatINR(overallBudget)}</Text>
+              </View>
+              <View style={styles.dropdownContainerWrapper}>
+                <DropDownPicker
+                  open={monthDropOpen}
+                  value={selectedMonth}
+                  items={monthItems}
+                  setOpen={setMonthDropOpen}
+                  setValue={setSelectedMonth}
+                  setItems={setMonthItems}
+                  style={styles.dropdown}
+                  textStyle={styles.dropdownText}
+                  dropDownContainerStyle={styles.dropdownList}
+                  arrowIconStyle={styles.dropdownArrow}
+                  listMode="MODAL"
+                  modalProps={{ animationType: 'fade' }}
+                  modalTitle="Select Month"
+                />
+              </View>
+            </View>
+            <Text style={styles.budgetAmount}>{formatINR(monthTotal)}</Text>
+
+            {/* Progress bar */}
+            <View style={styles.progressBg}>
+              <View style={[styles.progressFill, { width: `${pct}%`, backgroundColor: barColor }]} />
+            </View>
+
+            <View style={styles.budgetFooter}>
+              <Text style={styles.budgetRemaining}>
+                {isExceeded
+                  ? `${formatINR(overAmount)} over budget`
+                  : `${formatINR(remaining)} left`}
+              </Text>
+              <Text style={[styles.budgetPct, { color: barColor }]}>{pct}%</Text>
+            </View>
+          </View>
+        ) : (
+          <View style={[styles.setBudgetCard, { zIndex: 1000 }]}>
+            <View style={{ width: '100%', zIndex: 2000, marginBottom: 16 }}>
+              <Text style={{ fontFamily: FONTS.semiBold, fontSize: FONTS.sizes.sm, color: TEXT_MUTED, marginBottom: 8 }}>Select Month</Text>
+              <DropDownPicker
+                open={monthDropOpen}
+                value={selectedMonth}
+                items={monthItems}
+                setOpen={setMonthDropOpen}
+                setValue={setSelectedMonth}
+                setItems={setMonthItems}
+                style={[styles.dropdown, { backgroundColor: '#F3F4F6', width: '100%' }]}
+                textStyle={styles.dropdownText}
+                dropDownContainerStyle={styles.dropdownList}
+                arrowIconStyle={styles.dropdownArrow}
+                listMode="MODAL"
+                modalProps={{ animationType: 'fade' }}
+                modalTitle="Select Month"
+              />
+            </View>
+            <TouchableOpacity 
+              style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, width: '100%', paddingVertical: 14, backgroundColor: BRAND_PURPLE + '12', borderRadius: RADIUS.full }} 
+              onPress={() => navigation.navigate('BudgetSettings')}
+            >
+              <Plus stroke={BRAND_PURPLE} size={22} />
+              <Text style={styles.setBudgetText}>Set a Monthly Budget</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+
+        {/* Category Budget Section */}
+        {categories.length > 0 && (
+          <>
+            <Text style={styles.sectionTitle}>Category Budget</Text>
+            {categories.map(cat => {
+              const spent = categoryTotals[cat.id] || 0;
+              const limit = cat.budget || 0;
+              const hasLimit = limit > 0;
+              const catPct = hasLimit ? Math.round((spent / limit) * 100) : 0;
+              const catFill = hasLimit ? Math.min(catPct, 100) : 0;
+              let catBarColor = '#10B981';
+              if (catPct >= 100) catBarColor = '#EF4444';
+              else if (catPct >= 70) catBarColor = '#F59E0B';
+
+              return (
+                <View key={cat.id} style={styles.catCard}>
+                  <View style={styles.catRow}>
+                    <View style={[styles.catIconWrap, { backgroundColor: (cat.color || BRAND_PURPLE) + '20' }]}>
+                      <Text style={styles.catIcon}>{cat.icon || '📦'}</Text>
+                    </View>
+                    <View style={styles.catInfo}>
+                      <Text style={styles.catName}>{cat.name}</Text>
+                      {hasLimit && (
+                        <Text style={styles.catLimit}>{formatINR(limit)}</Text>
+                      )}
+                    </View>
+                    <View style={styles.catRight}>
+                      <Text style={styles.catSpent}>{formatINR(spent)}</Text>
+                      {hasLimit && (
+                        <Text style={[styles.catPct, { color: catBarColor }]}>{catPct}%</Text>
+                      )}
+                    </View>
+                  </View>
+                  {hasLimit && (
+                    <View style={styles.catProgressBg}>
+                      <View style={[styles.catProgressFill, { width: `${catFill}%`, backgroundColor: catBarColor }]} />
+                    </View>
+                  )}
+                </View>
+              );
+            })}
+          </>
+        )}
+
+        {categories.length === 0 && overallBudget > 0 && (
+          <View style={styles.emptyWrap}>
+            <View style={styles.emptyIconWrap}>
+              <PiggyBank stroke={BRAND_PURPLE} size={32} opacity={0.6} />
+            </View>
+            <Text style={styles.emptyTitle}>No spending yet</Text>
+            <Text style={styles.emptySub}>You haven't recorded any expenses for this budget period.</Text>
+          </View>
+        )}
+
       </ScrollView>
-    </SafeAreaView>
+
+      {/* FAB */}
+      <TouchableOpacity style={styles.fab} onPress={() => navigation.navigate('BudgetSettings')}>
+        <Plus stroke="#FFF" size={26} />
+      </TouchableOpacity>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  safeArea: { flex: 1 },
-  header: { 
-    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
-    padding: SPACING.md, borderBottomWidth: 1 
-  },
-  title: { fontFamily: FONTS.bold, fontSize: FONTS.sizes.xl },
-  content: { padding: SPACING.md, paddingBottom: 100 },
-  
-  chartCard: {
-    borderRadius: RADIUS.xl, borderWidth: 1,
-    padding: SPACING.lg, marginBottom: SPACING.lg,
-    alignItems: 'center',
-    ...SHADOWS.card,
-  },
-  chartTitle: { fontFamily: FONTS.semiBold, fontSize: FONTS.sizes.lg, marginBottom: SPACING.lg, alignSelf: 'flex-start' },
-  chartContainer: { alignItems: 'center', justifyContent: 'center', marginVertical: SPACING.sm },
-  pieCenter: { alignItems: 'center', justifyContent: 'center' },
-  pieCenterText: { fontFamily: FONTS.bold, fontSize: FONTS.sizes.xl },
-  pieCenterSub: { fontFamily: FONTS.regular, fontSize: FONTS.sizes.sm, marginTop: 4 },
-  
-  setBudgetBtn: { marginTop: SPACING.lg, paddingVertical: 12, paddingHorizontal: 24, borderRadius: RADIUS.md },
-  setBudgetBtnText: { color: '#fff', fontFamily: FONTS.semiBold, fontSize: FONTS.sizes.md },
-  
-  alertBox: { marginTop: SPACING.md, padding: SPACING.md, borderRadius: RADIUS.md, borderWidth: 1, width: '100%' },
-  alertText: { fontFamily: FONTS.semiBold, fontSize: FONTS.sizes.sm, textAlign: 'center' },
+  safeArea: { flex: 1, backgroundColor: BG_APP },
 
-  sectionHeader: { marginBottom: SPACING.sm, marginLeft: 4 },
-  sectionTitle: { fontFamily: FONTS.semiBold, fontSize: FONTS.sizes.lg },
-  
-  catCard: { borderRadius: RADIUS.lg, borderWidth: 1, padding: SPACING.md, marginBottom: SPACING.md },
-  catHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: SPACING.sm },
-  catNameRow: { flexDirection: 'row', alignItems: 'center' },
-  iconWrap: { width: 40, height: 40, borderRadius: RADIUS.md, alignItems: 'center', justifyContent: 'center', marginRight: SPACING.sm },
-  icon: { fontSize: 20 },
-  catName: { fontFamily: FONTS.semiBold, fontSize: FONTS.sizes.md },
-  catSpent: { fontFamily: FONTS.bold, fontSize: FONTS.sizes.md },
-  catLimit: { fontFamily: FONTS.regular, fontSize: FONTS.sizes.xs, marginTop: 2 },
-  
-  progressBarBg: { height: 8, borderRadius: 4, overflow: 'hidden' },
-  progressBarFill: { height: '100%', borderRadius: 4 },
-  progressText: { fontFamily: FONTS.regular, fontSize: FONTS.sizes.xs, alignSelf: 'flex-end', marginTop: 6 },
-  
-  emptyText: { fontFamily: FONTS.regular, fontSize: FONTS.sizes.md, textAlign: 'center', marginTop: SPACING.xl },
+  header: {
+    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
+    paddingHorizontal: 20, paddingVertical: 14,
+  },
+  headerTitle: { fontFamily: FONTS.bold, fontSize: FONTS.sizes.xxl, color: TEXT_DARK },
+  iconBtn: { padding: 6, borderRadius: RADIUS.md, backgroundColor: '#FFF', ...SHADOWS.card },
+
+  monthSelector: {
+    flexDirection: 'row', alignItems: 'center', alignSelf: 'flex-start',
+    marginHorizontal: 20, marginBottom: 16,
+    backgroundColor: '#FFF', paddingHorizontal: 14, paddingVertical: 8,
+    borderRadius: RADIUS.full, gap: 8, ...SHADOWS.card,
+  },
+  monthSelectorText: { fontFamily: FONTS.semiBold, fontSize: FONTS.sizes.sm, color: TEXT_DARK },
+
+  content: { paddingHorizontal: 20, paddingBottom: 100 },
+
+  // Exceeded Alert Card
+  alertCard: {
+    backgroundColor: '#EF4444',
+    borderRadius: RADIUS.xl,
+    padding: 20, marginBottom: 16,
+    ...SHADOWS.strong,
+  },
+  alertLeft: {},
+  alertTitle: { fontFamily: FONTS.bold, fontSize: FONTS.sizes.lg, color: '#FFF' },
+  alertSub: { fontFamily: FONTS.medium, fontSize: FONTS.sizes.sm, color: 'rgba(255,255,255,0.85)', marginTop: 4 },
+  alertOverAmount: { fontFamily: FONTS.bold, fontSize: FONTS.sizes.xxxl, color: '#FFF', marginTop: 12 },
+  alertOverLabel: { fontFamily: FONTS.medium, fontSize: FONTS.sizes.sm, color: 'rgba(255,255,255,0.85)' },
+
+  // Monthly Budget Card
+  budgetCard: {
+    backgroundColor: '#FFF', borderRadius: RADIUS.xl,
+    padding: 20, marginBottom: 24, ...SHADOWS.card,
+  },
+  budgetRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 },
+  budgetLabel: { fontFamily: FONTS.semiBold, fontSize: FONTS.sizes.md, color: TEXT_DARK },
+  budgetOfLabel: { fontFamily: FONTS.medium, fontSize: FONTS.sizes.sm, color: TEXT_MUTED },
+  budgetAmount: { fontFamily: FONTS.bold, fontSize: FONTS.sizes.xxxl, color: TEXT_DARK, marginBottom: 14 },
+  progressBg: { height: 8, backgroundColor: '#F3F4F6', borderRadius: 4, overflow: 'hidden', marginBottom: 8, zIndex: -1 },
+  progressFill: { height: '100%', borderRadius: 4 },
+  budgetFooter: { flexDirection: 'row', justifyContent: 'space-between', zIndex: -1 },
+  budgetRemaining: { fontFamily: FONTS.medium, fontSize: FONTS.sizes.sm, color: TEXT_MUTED },
+  budgetPct: { fontFamily: FONTS.bold, fontSize: FONTS.sizes.sm },
+
+  dropdownContainerWrapper: { width: 130, zIndex: 5000 },
+  dropdown: { minHeight: 38, backgroundColor: '#F9FAFB', borderColor: '#E8EAF0', borderRadius: RADIUS.full, paddingHorizontal: 12 },
+  dropdownText: { fontFamily: FONTS.semiBold, fontSize: 13, color: TEXT_DARK },
+  dropdownList: { borderColor: '#E8EAF0', borderRadius: RADIUS.lg, zIndex: 6000, elevation: 6000 },
+  dropdownArrow: { width: 16, height: 16, tintColor: TEXT_MUTED },
+
+  setBudgetCard: {
+    backgroundColor: '#FFF', borderRadius: RADIUS.xl, padding: 20,
+    alignItems: 'center', marginBottom: 24, ...SHADOWS.card,
+    flexDirection: 'column',
+  },
+  setBudgetText: { fontFamily: FONTS.bold, fontSize: FONTS.sizes.md, color: BRAND_PURPLE },
+
+  sectionTitle: { fontFamily: FONTS.bold, fontSize: FONTS.sizes.lg, color: TEXT_DARK, marginBottom: 14 },
+
+  // Category Cards
+  catCard: {
+    backgroundColor: '#FFF', borderRadius: RADIUS.lg,
+    padding: 16, marginBottom: 10, ...SHADOWS.card,
+  },
+  catRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 10 },
+  catIconWrap: { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center', marginRight: 12 },
+  catIcon: { fontSize: 20 },
+  catInfo: { flex: 1 },
+  catName: { fontFamily: FONTS.bold, fontSize: FONTS.sizes.md, color: TEXT_DARK },
+  catLimit: { fontFamily: FONTS.medium, fontSize: FONTS.sizes.sm, color: TEXT_MUTED, marginTop: 2 },
+  catRight: { alignItems: 'flex-end' },
+  catSpent: { fontFamily: FONTS.bold, fontSize: FONTS.sizes.md, color: TEXT_DARK },
+  catPct: { fontFamily: FONTS.semiBold, fontSize: FONTS.sizes.sm, marginTop: 2 },
+  catProgressBg: { height: 6, backgroundColor: '#F3F4F6', borderRadius: 3, overflow: 'hidden' },
+  catProgressFill: { height: '100%', borderRadius: 3 },
+
+  emptyWrap: { alignItems: 'center', paddingVertical: 40, paddingHorizontal: 20 },
+  emptyIconWrap: { width: 80, height: 80, borderRadius: 40, backgroundColor: BRAND_PURPLE + '12', alignItems: 'center', justifyContent: 'center', marginBottom: 16 },
+  emptyTitle: { fontFamily: FONTS.bold, fontSize: FONTS.sizes.lg, color: TEXT_DARK },
+  emptySub: { fontFamily: FONTS.medium, fontSize: FONTS.sizes.sm, color: TEXT_MUTED, marginTop: 6, textAlign: 'center', lineHeight: 20 },
+
+  fab: {
+    position: 'absolute', bottom: 24, right: 24,
+    width: 60, height: 60, borderRadius: 30,
+    backgroundColor: BRAND_PURPLE,
+    alignItems: 'center', justifyContent: 'center',
+    shadowColor: BRAND_PURPLE, shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.35, shadowRadius: 12, elevation: 10,
+  },
 });

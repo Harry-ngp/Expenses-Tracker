@@ -1,36 +1,58 @@
 import React, { useState, useCallback, useMemo } from 'react';
-import { View, Text, SectionList, TouchableOpacity, StyleSheet, RefreshControl, TextInput, FlatList } from 'react-native';
+import { View, Text, SectionList, TouchableOpacity, StyleSheet, RefreshControl, TextInput, LayoutAnimation, Platform, UIManager } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
+import { Search, X } from 'lucide-react-native';
 
-import { FONTS, SPACING, RADIUS } from '../constants/theme';
-import { useTheme } from '../context/ThemeContext';
+import { FONTS, SPACING, RADIUS, SHADOWS } from '../constants/theme';
 import { useAuth } from '../context/AuthContext';
-import { getExpenses, getCategoriesForUser, deleteExpense } from '../db/queries';
+import { getExpenses, deleteExpense } from '../db/queries';
 import ExpenseCard from '../components/ExpenseCard';
+
+const BG_APP = '#F7F8FA';
+const TEXT_DARK = '#1C1C28';
+const TEXT_MUTED = '#8F92A1';
+const BRAND_PURPLE = '#6C4CF1';
+const BORDER = '#E8EAF0';
+
+const relativeHeader = (dateStr) => {
+  const d = new Date(dateStr);
+  const today = new Date();
+  const yesterday = new Date();
+  yesterday.setDate(today.getDate() - 1);
+  const sameDay = (a, b) =>
+    a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
+  if (sameDay(d, today)) return 'Today';
+  if (sameDay(d, yesterday)) return 'Yesterday';
+  return d.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
+};
+
+// Format date's day total amount
+const formatAmount = (amount) =>
+  `₹${Number(amount).toLocaleString('en-IN', { minimumFractionDigits: 2 })}`;
+
+if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
+  UIManager.setLayoutAnimationEnabledExperimental(true);
+}
 
 export default function TransactionsListScreen({ navigation }) {
   const { user } = useAuth();
-  const { colors } = useTheme();
-  
+
   const [expenses, setExpenses] = useState([]);
-  const [categories, setCategories] = useState([]);
-  const [selectedCategory, setSelectedCategory] = useState(null);
+  const [filter, setFilter] = useState('All'); // 'All' | 'Expense'
   const [search, setSearch] = useState('');
   const [refreshing, setRefreshing] = useState(false);
+  const [searchVisible, setSearchVisible] = useState(false);
 
   const loadData = useCallback(() => {
     if (!user) return;
-    const cats = getCategoriesForUser(user.id);
-    setCategories([{ id: null, name: 'All' }, ...cats]);
-    
     const data = getExpenses({
       userId: user.id,
-      categoryId: selectedCategory,
       search: search.trim() || undefined,
     });
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
     setExpenses(data);
-  }, [user?.id, selectedCategory, search]);
+  }, [user?.id, search]);
 
   useFocusEffect(useCallback(() => { loadData(); }, [loadData]));
 
@@ -40,127 +62,167 @@ export default function TransactionsListScreen({ navigation }) {
     setRefreshing(false);
   };
 
-  const handleDelete = (id) => {
-    deleteExpense(id);
-    loadData();
-  };
+  const handleDelete = (id) => { deleteExpense(id); loadData(); };
+  const handleEdit = (expense) => navigation.navigate('AddExpense', { expense });
 
-  const handleEdit = (expense) => {
-    navigation.navigate('AddExpense', { expense });
-  };
-
-  // Group by date for SectionList
+  // Filter and group by date for SectionList
   const sections = useMemo(() => {
     const map = {};
-    expenses.forEach(e => {
-      const date = e.date; // YYYY-MM-DD
-      if (!map[date]) map[date] = [];
-      map[date].push(e);
+    const filtered = expenses.filter(e => {
+      if (filter === 'All') return true;
+      if (filter === 'Expense') return true; // Add income check here if Income is added to DB
+      return true;
     });
-    return Object.keys(map).sort((a,b) => b.localeCompare(a)).map(date => ({
-      title: date,
-      data: map[date],
-    }));
-  }, [expenses]);
+
+    filtered.forEach(e => {
+      const dateKey = e.date.split('T')[0]; // normalize to YYYY-MM-DD
+      if (!map[dateKey]) map[dateKey] = [];
+      map[dateKey].push(e);
+    });
+    return Object.keys(map)
+      .sort((a, b) => b.localeCompare(a))
+      .map(date => ({
+        title: date,
+        total: map[date].reduce((sum, e) => sum + e.amount, 0),
+        data: map[date],
+      }));
+  }, [expenses, filter]);
 
   return (
-    <SafeAreaView style={[styles.safeArea, { backgroundColor: colors.bg }]} edges={['top']}>
-      {/* Header & Search */}
-      <View style={[styles.header, { borderBottomColor: colors.border }]}>
-        <Text style={[styles.title, { color: colors.textPrimary }]}>Transactions</Text>
-        <View style={[styles.searchBox, { backgroundColor: colors.bgInput, borderColor: colors.border }]}>
-          <Text style={{color: colors.textMuted}}>🔍</Text>
+    <View style={styles.safeArea}>
+
+      {/* Search bar (collapsible) */}
+      {searchVisible && (
+        <View style={styles.searchWrap}>
+          <Search stroke={TEXT_MUTED} size={18} />
           <TextInput
-            style={[styles.searchInput, { color: colors.textPrimary }]}
-            placeholder="Search..."
-            placeholderTextColor={colors.textMuted}
+            style={styles.searchInput}
+            placeholder="Search transactions..."
+            placeholderTextColor={TEXT_MUTED}
             value={search}
             onChangeText={setSearch}
+            autoFocus
           />
+          {search.length > 0 && (
+            <TouchableOpacity onPress={() => setSearch('')}>
+              <X stroke={TEXT_MUTED} size={18} />
+            </TouchableOpacity>
+          )}
         </View>
+      )}
+
+      {/* Segmented Control: All | Expense */}
+      <View style={styles.segmentWrap}>
+        {['All', 'Expense'].map(tab => (
+          <TouchableOpacity
+            key={tab}
+            style={[styles.segmentTab, filter === tab && styles.segmentTabActive]}
+            onPress={() => setFilter(tab)}
+          >
+            <Text style={[styles.segmentText, filter === tab && styles.segmentTextActive]}>
+              {tab}
+            </Text>
+          </TouchableOpacity>
+        ))}
       </View>
 
-      {/* Category Filter */}
-      <View style={styles.filterWrap}>
-        <FlatList
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          data={categories}
-          keyExtractor={c => c.id?.toString() || 'all'}
-          renderItem={({ item }) => {
-            const isActive = selectedCategory === item.id;
-            return (
-              <TouchableOpacity
-                style={[
-                  styles.filterChip,
-                  { 
-                    backgroundColor: isActive ? colors.primary : colors.bgCard,
-                    borderColor: isActive ? colors.primary : colors.border
-                  }
-                ]}
-                onPress={() => setSelectedCategory(item.id)}
-              >
-                <Text style={[
-                  styles.filterText,
-                  { color: isActive ? '#fff' : colors.textPrimary }
-                ]}>
-                  {item.name}
-                </Text>
-              </TouchableOpacity>
-            );
-          }}
-          contentContainerStyle={{ paddingHorizontal: SPACING.md }}
-        />
-      </View>
-
-      {/* List */}
+      {/* Transactions List */}
       <SectionList
         sections={sections}
         keyExtractor={item => item.id.toString()}
         renderItem={({ item }) => (
-          <TouchableOpacity activeOpacity={0.7} onPress={() => handleEdit(item)}>
-            <ExpenseCard
-              expense={item}
-              onEdit={() => handleEdit(item)}
-              onDelete={() => handleDelete(item.id)}
-            />
-          </TouchableOpacity>
+          <ExpenseCard
+            expense={item}
+            onEdit={() => handleEdit(item)}
+            onDelete={() => handleDelete(item.id)}
+          />
         )}
-        renderSectionHeader={({ section: { title } }) => (
-          <View style={[styles.sectionHeader, { backgroundColor: colors.bg }]}>
-            <Text style={[styles.sectionTitle, { color: colors.textSecondary }]}>{title}</Text>
+        renderSectionHeader={({ section }) => (
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionHeaderTitle}>{relativeHeader(section.title)}</Text>
+            <Text style={styles.sectionHeaderTotal}>{formatAmount(section.total)}</Text>
           </View>
         )}
         contentContainerStyle={styles.listContent}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={BRAND_PURPLE} />}
         ListEmptyComponent={
           <View style={styles.empty}>
-            <Text style={[styles.emptyText, { color: colors.textMuted }]}>No transactions found.</Text>
+            <View style={styles.emptyIconWrap}>
+              <Search stroke={BRAND_PURPLE} size={32} opacity={0.6} />
+            </View>
+            <Text style={styles.emptyText}>No transactions found</Text>
+            <Text style={styles.emptySub}>We couldn't find anything matching your filters.</Text>
           </View>
         }
+        showsVerticalScrollIndicator={false}
       />
-    </SafeAreaView>
+
+      {/* FAB */}
+      <TouchableOpacity style={styles.fab} onPress={() => navigation.navigate('AddExpense', {})}>
+        <Text style={styles.fabText}>+</Text>
+      </TouchableOpacity>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  safeArea: { flex: 1 },
-  header: { padding: SPACING.md, borderBottomWidth: 1 },
-  title: { fontFamily: FONTS.bold, fontSize: FONTS.sizes.xxl, marginBottom: SPACING.sm },
-  searchBox: {
-    flexDirection: 'row', alignItems: 'center', paddingHorizontal: SPACING.sm,
-    height: 40, borderRadius: RADIUS.md, borderWidth: 1
+  safeArea: { flex: 1, backgroundColor: BG_APP },
+
+  header: {
+    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
+    paddingHorizontal: 20, paddingVertical: 14,
+    backgroundColor: BG_APP,
   },
-  searchInput: { flex: 1, marginLeft: SPACING.sm, fontFamily: FONTS.regular, fontSize: FONTS.sizes.sm },
-  filterWrap: { paddingVertical: SPACING.sm },
-  filterChip: {
-    paddingHorizontal: SPACING.md, paddingVertical: 6,
-    borderRadius: RADIUS.full, borderWidth: 1, marginRight: SPACING.sm
+  headerTitle: { fontFamily: FONTS.bold, fontSize: FONTS.sizes.xxl, color: TEXT_DARK },
+  headerActions: { flexDirection: 'row', gap: 8 },
+  iconBtn: { padding: 6, borderRadius: RADIUS.md, backgroundColor: '#FFF', ...SHADOWS.card },
+
+  searchWrap: {
+    flexDirection: 'row', alignItems: 'center',
+    marginHorizontal: 20, marginBottom: 10,
+    backgroundColor: '#FFF', borderRadius: RADIUS.lg,
+    paddingHorizontal: 14, paddingVertical: 10,
+    gap: 10, ...SHADOWS.card,
   },
-  filterText: { fontFamily: FONTS.medium, fontSize: FONTS.sizes.xs },
+  searchInput: { flex: 1, fontFamily: FONTS.medium, fontSize: FONTS.sizes.md, color: TEXT_DARK },
+
+  segmentWrap: {
+    flexDirection: 'row',
+    marginHorizontal: 20, marginBottom: 12,
+    backgroundColor: '#EDEEF5',
+    borderRadius: RADIUS.full,
+    padding: 4,
+  },
+  segmentTab: {
+    flex: 1, paddingVertical: 8,
+    borderRadius: RADIUS.full,
+    alignItems: 'center',
+  },
+  segmentTabActive: { backgroundColor: '#FFF', ...SHADOWS.card },
+  segmentText: { fontFamily: FONTS.semiBold, fontSize: FONTS.sizes.sm, color: TEXT_MUTED },
+  segmentTextActive: { color: BRAND_PURPLE, fontFamily: FONTS.bold },
+
+  sectionHeader: {
+    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
+    paddingHorizontal: 20, paddingVertical: 8, marginTop: 4,
+  },
+  sectionHeaderTitle: { fontFamily: FONTS.bold, fontSize: FONTS.sizes.md, color: TEXT_DARK },
+  sectionHeaderTotal: { fontFamily: FONTS.semiBold, fontSize: FONTS.sizes.sm, color: TEXT_MUTED },
+
   listContent: { paddingBottom: 100 },
-  sectionHeader: { paddingHorizontal: SPACING.md, paddingVertical: SPACING.xs },
-  sectionTitle: { fontFamily: FONTS.semiBold, fontSize: FONTS.sizes.sm },
-  empty: { padding: SPACING.xxl, alignItems: 'center' },
-  emptyText: { fontFamily: FONTS.regular, fontSize: FONTS.sizes.md },
+
+  empty: { alignItems: 'center', paddingTop: 80, paddingHorizontal: 40 },
+  emptyIconWrap: { width: 80, height: 80, borderRadius: 40, backgroundColor: BRAND_PURPLE + '12', alignItems: 'center', justifyContent: 'center', marginBottom: 16 },
+  emptyText: { fontFamily: FONTS.bold, fontSize: FONTS.sizes.lg, color: TEXT_DARK },
+  emptySub: { fontFamily: FONTS.medium, fontSize: FONTS.sizes.sm, color: TEXT_MUTED, marginTop: 6, textAlign: 'center', lineHeight: 20 },
+
+  fab: {
+    position: 'absolute', bottom: 24, right: 24,
+    width: 60, height: 60, borderRadius: 30,
+    backgroundColor: BRAND_PURPLE,
+    alignItems: 'center', justifyContent: 'center',
+    shadowColor: BRAND_PURPLE, shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.35, shadowRadius: 12, elevation: 10,
+  },
+  fabText: { color: '#FFF', fontSize: 32, fontFamily: FONTS.regular, lineHeight: 36 },
 });

@@ -2,9 +2,17 @@ import React, { useEffect, useState } from 'react';
 import { View, ActivityIndicator, StyleSheet, LogBox } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
+import {
+  Poppins_500Medium,
+  Poppins_600SemiBold,
+  Poppins_700Bold,
+  Poppins_800ExtraBold,
+  useFonts,
+} from '@expo-google-fonts/poppins';
 
 import { AuthProvider } from './src/context/AuthContext';
 import { ThemeProvider } from './src/context/ThemeContext';
+import { NotificationProvider } from './src/context/NotificationContext';
 import AppNavigator from './src/navigation/AppNavigator';
 import { initializeDatabase } from './src/db/schema';
 import { COLORS } from './src/constants/theme';
@@ -17,6 +25,13 @@ LogBox.ignoreLogs([
 export default function App() {
   const [dbReady, setDbReady] = useState(false);
 
+  const [fontsLoaded] = useFonts({
+    Poppins_500Medium,
+    Poppins_600SemiBold,
+    Poppins_700Bold,
+    Poppins_800ExtraBold,
+  });
+
   useEffect(() => {
     try {
       initializeDatabase();
@@ -27,7 +42,7 @@ export default function App() {
     }
   }, []);
 
-  if (!dbReady) {
+  if (!fontsLoaded || !dbReady) {
     return (
       <View style={styles.splash}>
         <ActivityIndicator size="large" color={COLORS.primary} />
@@ -40,7 +55,9 @@ export default function App() {
       <SafeAreaProvider>
         <ThemeProvider>
           <AuthProvider>
-            <AppNavigator />
+            <NotificationProvider>
+              <AppNavigator />
+            </NotificationProvider>
           </AuthProvider>
         </ThemeProvider>
       </SafeAreaProvider>
