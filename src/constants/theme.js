@@ -1,5 +1,5 @@
 // App-wide theme: colors, typography, spacing, shadows
-export const COLORS = {
+export const darkColors = {
   // Backgrounds
   bg:           '#0F0F1A',
   bgCard:       '#1A1A2E',
@@ -34,7 +34,51 @@ export const COLORS = {
   gradientPrimary: ['#7C3AED', '#5B21B6'],
   gradientCard:    ['#1A1A2E', '#16213E'],
   gradientAccent:  ['#06B6D4', '#0EA5E9'],
+  
+  isDark: true,
 };
+
+export const lightColors = {
+  // Backgrounds
+  bg:           '#F8F9FA',
+  bgCard:       '#FFFFFF',
+  bgCardAlt:    '#F1F3F5',
+  bgInput:      '#F1F3F5',
+  bgModal:      '#FFFFFF',
+
+  // Brand
+  primary:      '#6C5DD3', // vibrant purple from wireframe
+  primaryLight: '#9D95ED',
+  primaryDark:  '#4A3CA3',
+  accent:       '#3F8CFF',
+  accentLight:  '#8CB5FF',
+
+  // Status
+  success:      '#10B981',
+  warning:      '#FF7043',
+  danger:       '#FF4A5A',
+  dangerLight:  '#FF919C',
+
+  // Text
+  textPrimary:  '#1B1D28',
+  textSecondary:'#767C8A',
+  textMuted:    '#A0A5B1',
+  textInverse:  '#FFFFFF',
+
+  // Borders
+  border:       '#E4E7ED',
+  borderLight:  '#F1F3F5',
+
+  // Gradients
+  gradientPrimary: ['#6C5DD3', '#8578E8'],
+  gradientCard:    ['#FFFFFF', '#F8F9FA'],
+  gradientAccent:  ['#3F8CFF', '#6AABFF'],
+  
+  isDark: false,
+};
+
+// Fallback for any static imports still lingering
+export const COLORS = darkColors;
 
 export const FONTS = {
   regular:    'Inter_400Regular',

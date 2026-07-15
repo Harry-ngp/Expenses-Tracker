@@ -34,13 +34,13 @@ export const updateMonthlyBudget = (userId, budget) => {
 /**
  * Insert a new expense. Returns the new row id.
  */
-export const addExpense = ({ userId, categoryId, amount, description, date, isRecurring, recurrenceDay }) => {
+export const addExpense = ({ userId, categoryId, amount, description, date, isRecurring, recurrenceDay, paymentMethod }) => {
   const db = getDb();
   const result = db.runSync(
     `INSERT INTO expenses
-       (user_id, category_id, amount, description, date, is_recurring, recurrence_day, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'));`,
-    [userId, categoryId, amount, description || null, date, isRecurring ? 1 : 0, recurrenceDay || null]
+       (user_id, category_id, amount, description, date, is_recurring, recurrence_day, payment_method, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now'));`,
+    [userId, categoryId, amount, description || null, date, isRecurring ? 1 : 0, recurrenceDay || null, paymentMethod || 'Cash']
   );
   return result.lastInsertRowId;
 };
@@ -48,14 +48,14 @@ export const addExpense = ({ userId, categoryId, amount, description, date, isRe
 /**
  * Update an existing expense row.
  */
-export const updateExpense = ({ id, categoryId, amount, description, date, isRecurring, recurrenceDay }) => {
+export const updateExpense = ({ id, categoryId, amount, description, date, isRecurring, recurrenceDay, paymentMethod }) => {
   const db = getDb();
   db.runSync(
     `UPDATE expenses
      SET category_id = ?, amount = ?, description = ?, date = ?,
-         is_recurring = ?, recurrence_day = ?, updated_at = datetime('now')
+         is_recurring = ?, recurrence_day = ?, payment_method = ?, updated_at = datetime('now')
      WHERE id = ?;`,
-    [categoryId, amount, description || null, date, isRecurring ? 1 : 0, recurrenceDay || null, id]
+    [categoryId, amount, description || null, date, isRecurring ? 1 : 0, recurrenceDay || null, paymentMethod || 'Cash', id]
   );
 };
 
@@ -190,10 +190,10 @@ export const processRecurringExpenses = (userId) => {
 
       db.runSync(
         `INSERT INTO expenses
-           (user_id, category_id, amount, description, date, is_recurring, recurrence_day, updated_at)
-         VALUES (?, ?, ?, ?, ?, 0, NULL, datetime('now'));`,
+           (user_id, category_id, amount, description, date, is_recurring, recurrence_day, payment_method, updated_at)
+         VALUES (?, ?, ?, ?, ?, 0, NULL, ?, datetime('now'));`,
         [userId, expense.category_id, expense.amount,
-         `[Auto] ${expense.description || ''}`, newDate]
+         `[Auto] ${expense.description || ''}`, newDate, expense.payment_method || 'Cash']
       );
 
       // Log it
@@ -217,6 +217,66 @@ export const getMonthlyTotals = (userId) => {
        AND date >= date('now', '-11 months', 'start of month')
      GROUP BY month
      ORDER BY month ASC;`,
+    [userId]
+  );
+};
+
+// ═══════════════════════════════════════════════════════════════
+//  CATEGORY & BUDGET QUERIES
+// ═══════════════════════════════════════════════════════════════
+
+export const getCategoriesForUser = (userId) => {
+  const db = getDb();
+  return db.getAllSync(
+    'SELECT * FROM categories WHERE user_id IS NULL OR user_id = ? ORDER BY id ASC;',
+    [userId]
+  );
+};
+
+export const addCategory = (userId, name, icon, color) => {
+  const db = getDb();
+  const result = db.runSync(
+    'INSERT INTO categories (name, icon, color, user_id) VALUES (?, ?, ?, ?);',
+    [name, icon, color, userId]
+  );
+  return result.lastInsertRowId;
+};
+
+export const updateCategory = (categoryId, name, icon, color) => {
+  const db = getDb();
+  db.runSync(
+    'UPDATE categories SET name = ?, icon = ?, color = ? WHERE id = ?;',
+    [name, icon, color, categoryId]
+  );
+};
+
+export const deleteCategory = (categoryId) => {
+  const db = getDb();
+  db.runSync('DELETE FROM categories WHERE id = ?;', [categoryId]);
+};
+
+export const setCategoryBudget = (userId, categoryId, budget) => {
+  const db = getDb();
+  db.runSync(
+    `INSERT INTO category_budgets (user_id, category_id, budget)
+     VALUES (?, ?, ?)
+     ON CONFLICT(user_id, category_id) DO UPDATE SET budget = excluded.budget;`,
+    [userId, categoryId, budget]
+  );
+};
+
+export const deleteCategoryBudget = (userId, categoryId) => {
+  const db = getDb();
+  db.runSync('DELETE FROM category_budgets WHERE user_id = ? AND category_id = ?;', [userId, categoryId]);
+};
+
+export const getCategoryBudgets = (userId) => {
+  const db = getDb();
+  return db.getAllSync(
+    `SELECT cb.*, c.name, c.icon, c.color 
+     FROM category_budgets cb
+     JOIN categories c ON cb.category_id = c.id
+     WHERE cb.user_id = ?;`,
     [userId]
   );
 };

@@ -38,9 +38,31 @@ export const initializeDatabase = () => {
   db.execSync(`
     CREATE TABLE IF NOT EXISTS categories (
       id    INTEGER PRIMARY KEY AUTOINCREMENT,
-      name  TEXT    NOT NULL UNIQUE,
+      name  TEXT    NOT NULL,
       icon  TEXT,
-      color TEXT
+      color TEXT,
+      user_id INTEGER,
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    );
+  `);
+
+  try {
+    db.execSync("ALTER TABLE categories ADD COLUMN user_id INTEGER REFERENCES users(id) ON DELETE CASCADE;");
+  } catch (e) {
+    // Column might already exist
+  }
+
+  // ── category_budgets table ───────────────────────────────────
+  db.execSync(`
+    CREATE TABLE IF NOT EXISTS category_budgets (
+      id          INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id     INTEGER NOT NULL,
+      category_id INTEGER NOT NULL,
+      budget      REAL    NOT NULL CHECK(budget > 0),
+      created_at  TEXT    DEFAULT (datetime('now')),
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+      FOREIGN KEY (category_id) REFERENCES categories(id) ON DELETE CASCADE,
+      UNIQUE(user_id, category_id)
     );
   `);
 
@@ -52,6 +74,7 @@ export const initializeDatabase = () => {
       category_id    INTEGER NOT NULL DEFAULT 10,
       amount         REAL    NOT NULL CHECK(amount > 0),
       currency       TEXT    NOT NULL DEFAULT 'INR',
+      payment_method TEXT    NOT NULL DEFAULT 'Cash',
       description    TEXT,
       date           TEXT    NOT NULL,
       is_recurring   INTEGER NOT NULL DEFAULT 0,
@@ -62,6 +85,12 @@ export const initializeDatabase = () => {
       FOREIGN KEY (category_id) REFERENCES categories(id)
     );
   `);
+
+  try {
+    db.execSync("ALTER TABLE expenses ADD COLUMN payment_method TEXT DEFAULT 'Cash';");
+  } catch (e) {
+    // Column might already exist
+  }
 
   // ── recurring_log table ───────────────────────────────────────
   db.execSync(`
