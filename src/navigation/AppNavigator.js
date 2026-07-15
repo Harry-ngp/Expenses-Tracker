@@ -2,10 +2,11 @@ import React from 'react';
 import { NavigationContainer } from '@react-navigation/native';
 import { createStackNavigator } from '@react-navigation/stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
-import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import { View, Text, TouchableOpacity, TouchableWithoutFeedback, StyleSheet } from 'react-native';
 import { Home, List, PieChart, BarChart2, MoreHorizontal, AlignLeft, Bell, Plus } from 'lucide-react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
+import Animated, { useSharedValue, useAnimatedStyle, withSpring, withSequence, withTiming } from 'react-native-reanimated';
 import { useNavigation } from '@react-navigation/native';
 
 import { useAuth } from '../context/AuthContext';
@@ -35,6 +36,37 @@ const BG_APP       = '#F7F8FA';
 const BORDER       = '#F0F1F5';
 
 // ── Shared static header (same on every tab screen) ─────────────
+
+const AnimatedHamburger = ({ onPress }) => {
+  const scale = useSharedValue(1);
+  const rotate = useSharedValue(0);
+
+  const animatedStyle = useAnimatedStyle(() => ({
+    transform: [
+      { scale: scale.value },
+      { rotate: `${rotate.value}deg` }
+    ]
+  }));
+
+  const handlePressIn = () => { scale.value = withSpring(0.85); };
+  const handlePressOut = () => {
+    scale.value = withSpring(1);
+    rotate.value = withSequence(
+      withTiming(-20, { duration: 60 }),
+      withSpring(0, { damping: 4, stiffness: 200 })
+    );
+    onPress();
+  };
+
+  return (
+    <TouchableWithoutFeedback onPressIn={handlePressIn} onPressOut={handlePressOut}>
+      <Animated.View style={[headerStyles.iconBtn, animatedStyle]}>
+        <AlignLeft stroke={TEXT_DARK} size={22} strokeWidth={2.5} />
+      </Animated.View>
+    </TouchableWithoutFeedback>
+  );
+};
+
 const AppHeader = ({ title }) => {
   const navigation = useNavigation();
   const { unreadCount } = useNotifications();
@@ -43,9 +75,7 @@ const AppHeader = ({ title }) => {
     <SafeAreaView style={headerStyles.safe} edges={['top']}>
       <View style={headerStyles.container}>
         {/* Left — hamburger */}
-        <TouchableOpacity style={headerStyles.iconBtn} onPress={() => navigation.navigate('Menu')}>
-          <AlignLeft stroke={TEXT_DARK} size={22} strokeWidth={2.5} />
-        </TouchableOpacity>
+        <AnimatedHamburger onPress={() => navigation.navigate('Menu')} />
 
         {/* Center — page title */}
         <Text style={headerStyles.title}>{title}</Text>
@@ -225,7 +255,22 @@ const AppNavigator = () => {
             <Stack.Screen
               name="Menu"
               component={MenuScreen}
-              options={{ presentation: 'modal' }}
+              options={{ 
+                presentation: 'modal',
+                gestureDirection: 'horizontal-inverted',
+                cardStyleInterpolator: ({ current, layouts }) => ({
+                  cardStyle: {
+                    transform: [
+                      {
+                        translateX: current.progress.interpolate({
+                          inputRange: [0, 1],
+                          outputRange: [-layouts.screen.width, 0],
+                        }),
+                      },
+                    ],
+                  },
+                }),
+              }}
             />
             <Stack.Screen
               name="Notifications"
