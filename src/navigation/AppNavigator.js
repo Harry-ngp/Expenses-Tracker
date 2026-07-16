@@ -4,8 +4,9 @@ import { createStackNavigator } from '@react-navigation/stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { View, Text, TouchableOpacity, TouchableWithoutFeedback, StyleSheet } from 'react-native';
 import { Home, List, PieChart, BarChart2, MoreHorizontal, AlignLeft, Bell, Plus } from 'lucide-react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
+import { Platform } from 'react-native';
 import Animated, { useSharedValue, useAnimatedStyle, withSpring, withSequence, withTiming } from 'react-native-reanimated';
 import { useNavigation } from '@react-navigation/native';
 
@@ -102,7 +103,9 @@ const TabIcon = ({ IconComponent, label, focused }) => {
   const color = focused ? BRAND_PURPLE : TEXT_MUTED;
   return (
     <View style={[tabStyles.wrap, focused && tabStyles.wrapActive]}>
-      <IconComponent stroke={color} size={22} strokeWidth={focused ? 2.5 : 2} />
+      <View style={[tabStyles.iconBg, focused && tabStyles.iconBgActive]}>
+        <IconComponent stroke={color} size={focused ? 28 : 24} strokeWidth={focused ? 2.5 : 2} />
+      </View>
       <Text 
         style={[tabStyles.label, { color }, focused && tabStyles.labelActive]}
         numberOfLines={1}
@@ -143,31 +146,39 @@ const CenterAddButton = ({ onPress }) => (
 );
 
 // ── Bottom tab navigator ────────────────────────────────────────
-const MainTabs = () => (
-  <Tab.Navigator
-    screenOptions={({ route }) => ({
-      // Render the shared header for every tab
-      header: () => <AppHeader title={route.name === 'More' ? 'More' : route.name} />,
-      tabBarStyle: {
-        backgroundColor: BG_WHITE,
-        borderTopColor: BORDER,
-        borderTopWidth: 1,
-        height: 64,
-        paddingVertical: 0,
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: -2 },
-        shadowOpacity: 0.05,
-        shadowRadius: 8,
-        elevation: 10,
-      },
-      tabBarShowLabel: false,
-      tabBarItemStyle: {
-        height: 64,
-        alignItems: 'center',
-        justifyContent: 'center',
-      },
-    })}
-  >
+const MainTabs = () => {
+  const insets = useSafeAreaInsets();
+  
+  // On Android, insets.bottom might be 0 depending on edge-to-edge config, so we add a little extra padding
+  const bottomPadding = Platform.OS === 'android' ? Math.max(insets.bottom, 12) : insets.bottom;
+  const tabHeight = 64 + bottomPadding;
+
+  return (
+    <Tab.Navigator
+      screenOptions={({ route }) => ({
+        // Render the shared header for every tab
+        header: () => <AppHeader title={route.name === 'More' ? 'More' : route.name} />,
+        tabBarStyle: {
+          backgroundColor: BG_WHITE,
+          borderTopColor: BORDER,
+          borderTopWidth: 1,
+          height: tabHeight,
+          paddingBottom: bottomPadding,
+          paddingTop: 8,
+          shadowColor: '#000',
+          shadowOffset: { width: 0, height: -2 },
+          shadowOpacity: 0.05,
+          shadowRadius: 8,
+          elevation: 10,
+        },
+        tabBarShowLabel: false,
+        tabBarItemStyle: {
+          height: 64, // the actual clickable area minus padding
+          alignItems: 'center',
+          justifyContent: 'center',
+        },
+      })}
+    >
     <Tab.Screen
       name="Dashboard"
       component={DashboardScreen}
@@ -219,8 +230,9 @@ const MainTabs = () => (
         ),
       }}
     />
-  </Tab.Navigator>
-);
+    </Tab.Navigator>
+  );
+};
 
 // ── Root navigator ──────────────────────────────────────────────
 const AppNavigator = () => {
@@ -353,11 +365,20 @@ const tabStyles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: 4,
-    paddingTop: 8,
-    minWidth: 56, // Ensure enough width so text doesn't squish too easily
+    minWidth: 64, // Wider to fit the larger icon background
   },
   wrapActive: {
-    // No background pill for column layout usually, rely on color
+  },
+  iconBg: {
+    width: 48,
+    height: 32,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'transparent',
+  },
+  iconBgActive: {
+    backgroundColor: '#FFF0F0', // Very light purple/red tint to match BRAND_PURPLE
   },
   label: {
     fontFamily: FONTS.medium,

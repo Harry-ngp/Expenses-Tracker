@@ -103,14 +103,16 @@ export default function DashboardScreen({ navigation }) {
       setPieData(formattedPie);
 
       // 4. Animate progress bar (budget logic)
-      const budget = user?.monthly_budget || 25000; // fallback to 25k if not set
+      const budget = user?.monthly_budget || 0;
       const actualPct = budget > 0 ? Math.round((total / budget) * 100) : 0;
 
-      RNAnimated.timing(progressAnim, {
-        toValue: Math.min(actualPct, 100),
-        duration: 1500,
-        useNativeDriver: false,
-      }).start();
+      if (budget > 0) {
+        RNAnimated.timing(progressAnim, {
+          toValue: Math.min(actualPct, 100),
+          duration: 1500,
+          useNativeDriver: false,
+        }).start();
+      }
 
     } catch (err) {
       console.error('loadData error', err);
@@ -129,7 +131,7 @@ export default function DashboardScreen({ navigation }) {
     setRefreshing(false);
   };
 
-  const budget = user?.monthly_budget || 25000;
+  const budget = user?.monthly_budget || 0;
   const actualPct = budget > 0 ? Math.round((monthTotal / budget) * 100) : 0;
 
   // Progress bar color
@@ -183,31 +185,33 @@ export default function DashboardScreen({ navigation }) {
           </LinearGradient>
         </View>
 
-        {/* 3. Monthly Budget Card */}
-        <View style={styles.budgetCard}>
-          <View style={[styles.rowBetween, { marginBottom: 12 }]}>
-            <Text style={styles.budgetLabel}>Monthly Budget</Text>
-            <Text style={styles.budgetSubLabel}>of ₹ {budget.toLocaleString('en-IN')}.00</Text>
-          </View>
+        {/* 3. Monthly Budget Card (Only show if budget > 0) */}
+        {budget > 0 && (
+          <View style={styles.budgetCard}>
+            <View style={[styles.rowBetween, { marginBottom: 12 }]}>
+              <Text style={styles.budgetLabel}>Monthly Budget</Text>
+              <Text style={styles.budgetSubLabel}>of ₹ {budget.toLocaleString('en-IN')}.00</Text>
+            </View>
 
-          <View style={[styles.rowBetween, { marginBottom: 8, alignItems: 'flex-end' }]}>
-            <Text style={styles.budgetAmount}>₹ {budget.toLocaleString('en-IN')}.00</Text>
-            <Text style={styles.budgetPercent}>{actualPct}%</Text>
-          </View>
+            <View style={[styles.rowBetween, { marginBottom: 8, alignItems: 'flex-end' }]}>
+              <Text style={styles.budgetAmount}>₹ {budget.toLocaleString('en-IN')}.00</Text>
+              <Text style={styles.budgetPercent}>{actualPct}%</Text>
+            </View>
 
-          <View style={styles.progressBg}>
-            <RNAnimated.View style={[
-              styles.progressFill,
-              {
-                width: progressAnim.interpolate({
-                  inputRange: [0, 100],
-                  outputRange: ['0%', '100%']
-                }),
-                backgroundColor: progressColor
-              }
-            ]} />
+            <View style={styles.progressBg}>
+              <RNAnimated.View style={[
+                styles.progressFill,
+                {
+                  width: progressAnim.interpolate({
+                    inputRange: [0, 100],
+                    outputRange: ['0%', '100%']
+                  }),
+                  backgroundColor: progressColor
+                }
+              ]} />
+            </View>
           </View>
-        </View>
+        )}
 
         {/* 4. Expenses Overview */}
         <View style={styles.sectionWrap}>
