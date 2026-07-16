@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, StyleSheet, Switch, TouchableOpacity, ScrollView, Alert } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import {
@@ -7,7 +7,6 @@ import {
   Download, Settings, HelpCircle, Info, LogOut, ChevronRight, Calendar, Bell
 } from 'lucide-react-native';
 import { useAuth } from '../context/AuthContext';
-import { useTheme } from '../context/ThemeContext';
 import { FONTS, SHADOWS, RADIUS } from '../constants/theme';
 
 const BRAND_PURPLE = '#FF6B6B'; // Sunset Horizon Primary
@@ -29,7 +28,6 @@ const MenuRow = ({ icon: Icon, iconColor, label, onPress, rightElement }) => (
 
 export default function MenuScreen() {
   const { user, logout } = useAuth();
-  const { isDarkMode, toggleTheme } = useTheme();
   const navigation = useNavigation();
 
   const initials = user?.username
@@ -62,7 +60,7 @@ export default function MenuScreen() {
         <View style={styles.section}>
           <MenuRow
             icon={PieChart} iconColor={BRAND_PURPLE} label="Budget"
-            onPress={() => navigation.navigate('Budget')}
+            onPress={() => navigation.navigate('Main', { screen: 'Budget' })}
           />
           <View style={styles.divider} />
           <MenuRow
@@ -72,7 +70,7 @@ export default function MenuScreen() {
           <View style={styles.divider} />
           <MenuRow
             icon={BarChart2} iconColor="#10B981" label="Reports"
-            onPress={() => navigation.navigate('Reports')}
+            onPress={() => navigation.navigate('Main', { screen: 'Reports' })}
           />
           <View style={styles.divider} />
           <MenuRow
@@ -102,20 +100,6 @@ export default function MenuScreen() {
         </View>
 
         <View style={styles.section}>
-          <MenuRow
-            icon={Settings} iconColor={TEXT_DARK} label="Dark Mode"
-            onPress={toggleTheme}
-            rightElement={
-              <Switch
-                value={isDarkMode}
-                onValueChange={toggleTheme}
-                trackColor={{ false: '#E8EAF0', true: BRAND_PURPLE }}
-                thumbColor="#FFF"
-                style={{ transform: [{ scaleX: 0.85 }, { scaleY: 0.85 }] }}
-              />
-            }
-          />
-          <View style={styles.divider} />
           <MenuRow
             icon={HelpCircle} iconColor="#F59E0B" label="Help & Support"
             onPress={() => Alert.alert('Help', 'For help, visit our support page.')}

@@ -13,6 +13,8 @@ import { useAuth } from '../context/AuthContext';
 import { getExpenses, getMonthlyTotal, getCategoryTotals } from '../db/queries';
 import ExpenseCard from '../components/ExpenseCard';
 import AnimatedBackground from '../components/AnimatedBackground';
+import AnimatedNumber from '../components/AnimatedNumber';
+import SkeletonLoader from '../components/SkeletonLoader';
 
 const BRAND_PURPLE = '#FF6B6B'; // Sunset Horizon Primary
 const BG_WHITE = '#FFFFFF';
@@ -71,6 +73,7 @@ export default function DashboardScreen({ navigation }) {
 
   const loadData = useCallback(() => {
     if (!user) return;
+    
     try {
       // 1. Get total
       const total = getMonthlyTotal(user.id, selectedMonth);
@@ -180,7 +183,7 @@ export default function DashboardScreen({ navigation }) {
                 />
               </View>
             </View>
-            <Text style={styles.totalCardAmount}>₹ {monthTotal.toLocaleString('en-IN')}.00</Text>
+            <AnimatedNumber value={monthTotal} duration={1200} style={styles.totalCardAmount} />
             <Text style={styles.totalCardTrend}>Updated for {monthItems.find(m => m.value === selectedMonth)?.label}</Text>
           </LinearGradient>
         </View>
