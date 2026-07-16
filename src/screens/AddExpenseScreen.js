@@ -1,305 +1,556 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity, StyleSheet,
-  ScrollView, KeyboardAvoidingView, Platform, Alert, ActivityIndicator,
+  KeyboardAvoidingView, Platform, Alert, ActivityIndicator,
+  Animated, Easing as RNEasing, FlatList, Modal,
+  Keyboard, Dimensions,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import DateTimePicker from '@react-native-community/datetimepicker';
-import DropDownPicker from 'react-native-dropdown-picker';
-import { X, Check, Calendar as CalendarIcon } from 'lucide-react-native';
-
-import { FONTS, SPACING, RADIUS } from '../constants/theme';
+import { ArrowLeft, ChevronDown, Check, Calendar, FileText, Tag } from 'lucide-react-native';
+import { FONTS } from '../constants/theme';
 import { useAuth } from '../context/AuthContext';
 import { useNotifications } from '../context/NotificationContext';
 import { addExpense, updateExpense, getCategoriesForUser, getMonthlyTotal } from '../db/queries';
 import { formatINR } from '../utils/dateHelpers';
+import Svg, { Path, Circle } from 'react-native-svg';
 
-const BRAND_PURPLE = '#FF6B6B'; // Sunset Horizon Primary
-const BG_WHITE = '#FFFFFF';
-const BG_APP = '#FAFAFC';
-const TEXT_DARK = '#1C1C28';
-const TEXT_MUTED = '#8F92A1';
-const BORDER_COLOR = '#E4E7ED';
+const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
 
-// Custom Date formatter "5 Jun 2024, 9:30 AM"
-const formatCustomDate = (dateString) => {
-  if (!dateString) return '';
-  const d = new Date(dateString);
-  const options = { day: 'numeric', month: 'short', year: 'numeric', hour: 'numeric', minute: '2-digit' };
-  return d.toLocaleDateString('en-GB', options);
+const BRAND      = '#FF6B6B';
+const BG_WHITE   = '#FFFFFF';
+const BG_SCREEN  = '#F2F3F7';
+const TEXT_DARK  = '#1A1A2E';
+const TEXT_MUTED = '#9EA3B5';
+const BORDER     = '#E6E8F0';
+const ROW_H      = 54;
+const BTN_H      = 54;
+const BTN_MX     = 20;
+
+const fmtDate = (iso) => {
+  if (!iso) return '';
+  return new Date(iso).toLocaleDateString('en-US', { day: 'numeric', month: 'short', year: 'numeric' });
 };
 
-export default function AddExpenseScreen({ navigation, route }) {
-  const { user } = useAuth();
-  const { addNotification } = useNotifications();
-  
-  const editingExpense = route.params?.expense || null;
-  const isEditing = !!editingExpense;
+// ──────────────────────────────────────────────────────
+// ✅ PhonePe Style Success Overlay
+//   - Expanding green circle
+//   - Animated white checkmark drawing (strokeDashoffset)
+// ──────────────────────────────────────────────────────
+const AnimatedPath = Animated.createAnimatedComponent(Path);
 
-  // Ensure default date includes current time for "9:30 AM" format
-  const initialDate = editingExpense ? new Date(editingExpense.date) : new Date();
-
-  // Form state
-  const [amount, setAmount]           = useState(editingExpense ? String(editingExpense.amount) : '');
-  const [description, setDescription] = useState(editingExpense?.description || '');
-  const [date, setDate]               = useState(initialDate.toISOString());
-  const [categoryId, setCategoryId]   = useState(editingExpense?.category_id || null);
-  const [paymentMethod, setPaymentMethod] = useState(editingExpense?.payment_method || 'Cash');
-  const [loading, setLoading]         = useState(false);
-
-  // Dropdowns
-  const [catDropOpen, setCatDropOpen] = useState(false);
-  const [catItems, setCatItems]       = useState([]);
-  
-  const [payDropOpen, setPayDropOpen] = useState(false);
-  const [payItems, setPayItems]       = useState([
-    { label: 'Cash', value: 'Cash' },
-    { label: 'Card', value: 'Card' },
-    { label: 'UPI', value: 'UPI' },
-    { label: 'Bank Transfer', value: 'Bank Transfer' },
-  ]);
-
-  const [showDatePicker, setShowDatePicker] = useState(false);
+function PhonePeSuccessOverlay({ visible, onDone }) {
+  const overlayOpacity = useRef(new Animated.Value(0)).current;
+  const circleScale    = useRef(new Animated.Value(0)).current;
+  const pathAnim       = useRef(new Animated.Value(0)).current;
+  const textOpacity    = useRef(new Animated.Value(0)).current;
+  const textTranslateY = useRef(new Animated.Value(20)).current;
 
   useEffect(() => {
-    if (user) {
-      const dbCats = getCategoriesForUser(user.id);
-      const items = dbCats.map(c => ({
-        label: c.name,
-        value: c.id,
-        icon: () => (
-          <View style={[styles.dropdownIconWrap, { backgroundColor: c.color + '22' }]}>
-            <Text style={styles.dropdownIconText}>{c.icon || '📦'}</Text>
+    if (!visible) return;
+
+    // Reset
+    overlayOpacity.setValue(0);
+    circleScale.setValue(0);
+    pathAnim.setValue(0);
+    textOpacity.setValue(0);
+    textTranslateY.setValue(20);
+
+    Animated.sequence([
+      // 1. Fade in white/light background overlay
+      Animated.timing(overlayOpacity, { toValue: 1, duration: 80, useNativeDriver: true }),
+      
+      // 2. Pop the green circle
+      Animated.spring(circleScale, {
+        toValue: 1,
+        tension: 220,
+        friction: 12,
+        useNativeDriver: true,
+      }),
+
+      // 3. Draw the checkmark & slide text up simultaneously
+      Animated.parallel([
+        Animated.timing(pathAnim, {
+          toValue: 1,
+          duration: 180,
+          easing: RNEasing.inOut(RNEasing.ease),
+          useNativeDriver: true,
+        }),
+        Animated.timing(textOpacity, {
+          toValue: 1,
+          duration: 150,
+          useNativeDriver: true,
+        }),
+        Animated.timing(textTranslateY, {
+          toValue: 0,
+          duration: 150,
+          easing: RNEasing.out(RNEasing.ease),
+          useNativeDriver: true,
+        }),
+      ]),
+
+      // 4. Wait a bit, then finish
+      Animated.delay(500),
+    ]).start(() => {
+      if (onDone) onDone();
+    });
+
+  }, [visible]);
+
+  if (!visible) return null;
+
+  // Path length is roughly 75 for this checkmark
+  const checkmarkLength = 80;
+  const strokeDashoffset = pathAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: [checkmarkLength, 0],
+  });
+
+  return (
+    <View style={StyleSheet.absoluteFill} pointerEvents="none">
+      {/* Light overlay backdrop (PhonePe often uses white or very light overlay) */}
+      <Animated.View
+        style={[
+          StyleSheet.absoluteFill,
+          { backgroundColor: 'rgba(255, 255, 255, 0.94)', opacity: overlayOpacity }
+        ]}
+      />
+
+      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', paddingBottom: 60 }}>
+        {/* Green Circle Container */}
+        <Animated.View style={{ transform: [{ scale: circleScale }] }}>
+          <Svg width="110" height="110" viewBox="0 0 100 100">
+            <Circle cx="50" cy="50" r="48" fill="#139D59" />
+            <AnimatedPath
+              d="M 28 52 L 44 68 L 74 34"
+              stroke="#FFFFFF"
+              strokeWidth="8"
+              fill="none"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeDasharray={checkmarkLength}
+              strokeDashoffset={strokeDashoffset}
+            />
+          </Svg>
+        </Animated.View>
+
+        {/* Success Text */}
+        <Animated.View
+          style={{
+            marginTop: 30,
+            alignItems: 'center',
+            opacity: textOpacity,
+            transform: [{ translateY: textTranslateY }]
+          }}
+        >
+          <Text style={{ fontFamily: FONTS.bold, fontSize: 24, color: TEXT_DARK }}>
+            Expense Added Successfully
+          </Text>
+          <Text style={{ fontFamily: FONTS.regular, fontSize: 16, color: TEXT_MUTED, marginTop: 8 }}>
+            Expense safely recorded.
+          </Text>
+        </Animated.View>
+      </View>
+    </View>
+  );
+}
+
+// ──────────────────────────────────────────────
+// Custom Animated Dropdown (Bottom Sheet)
+// ──────────────────────────────────────────────
+function Dropdown({ label, value, items, onChange, placeholder, leftIcon }) {
+  const [open, setOpen]   = useState(false);
+  const chevron = useRef(new Animated.Value(0)).current;
+  const overlay = useRef(new Animated.Value(0)).current;
+  const sheetY  = useRef(new Animated.Value(500)).current;
+
+  const openSheet = () => {
+    setOpen(true);
+    Animated.parallel([
+      Animated.timing(chevron, { toValue: 1, duration: 220, easing: RNEasing.out(RNEasing.quad), useNativeDriver: true }),
+      Animated.timing(overlay,  { toValue: 1, duration: 200, useNativeDriver: true }),
+      Animated.spring(sheetY,   { toValue: 0, useNativeDriver: true, tension: 70, friction: 12 }),
+    ]).start();
+  };
+
+  const closeSheet = () => {
+    Animated.parallel([
+      Animated.timing(chevron, { toValue: 0, duration: 180, useNativeDriver: true }),
+      Animated.timing(overlay,  { toValue: 0, duration: 170, useNativeDriver: true }),
+      Animated.timing(sheetY,   { toValue: 500, duration: 220, easing: RNEasing.in(RNEasing.quad), useNativeDriver: true }),
+    ]).start(() => setOpen(false));
+  };
+
+  const select   = (v) => { onChange(v); closeSheet(); };
+  const rotate   = chevron.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '180deg'] });
+  const selected = items.find(i => i.value === value);
+
+  return (
+    <>
+      <TouchableOpacity style={styles.row} onPress={openSheet} activeOpacity={0.7}>
+        <View style={styles.rowLeft}>
+          {leftIcon}
+          <Text style={[styles.rowValue, !selected && { color: TEXT_MUTED }]} numberOfLines={1}>
+            {selected ? selected.label : placeholder}
+          </Text>
+        </View>
+        <Animated.View style={{ transform: [{ rotate }] }}>
+          <ChevronDown stroke={TEXT_MUTED} size={18} />
+        </Animated.View>
+      </TouchableOpacity>
+
+      {open && (
+        <Modal transparent visible animationType="none" onRequestClose={closeSheet} statusBarTranslucent>
+          <View style={styles.modalRoot}>
+            <Animated.View style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(0,0,0,0.38)', opacity: overlay }]} />
+            <TouchableOpacity style={{ flex: 1 }} onPress={closeSheet} activeOpacity={1} />
+            <Animated.View style={[styles.sheet, { transform: [{ translateY: sheetY }] }]}>
+              <View style={styles.sheetPill} />
+              <Text style={styles.sheetTitle}>{label}</Text>
+              <FlatList
+                data={items}
+                keyExtractor={i => String(i.value)}
+                showsVerticalScrollIndicator={false}
+                contentContainerStyle={{ paddingBottom: 32 }}
+                renderItem={({ item }) => {
+                  const sel = item.value === value;
+                  return (
+                    <TouchableOpacity
+                      style={[styles.sheetRow, sel && styles.sheetRowActive]}
+                      onPressIn={() => select(item.value)}
+                      activeOpacity={0.55}
+                    >
+                      {item.rawIcon ? (
+                        <View style={[styles.sheetEmoji, { backgroundColor: (item.rawColor || BRAND) + '22' }]}>
+                          <Text style={{ fontSize: 18 }}>{item.rawIcon}</Text>
+                        </View>
+                      ) : null}
+                      <Text style={[styles.sheetRowLabel, sel && { color: BRAND, fontFamily: FONTS.semiBold }]}>
+                        {item.label}
+                      </Text>
+                      {sel && <Check stroke={BRAND} size={17} />}
+                    </TouchableOpacity>
+                  );
+                }}
+              />
+            </Animated.View>
           </View>
-        )
-      }));
-      setCatItems(items);
-      if (!isEditing && items.length > 0) {
-        setCategoryId(items[0].value);
+        </Modal>
+      )}
+    </>
+  );
+}
+
+// ──────────────────────────────────────────────
+// Main Screen
+// ──────────────────────────────────────────────
+export default function AddExpenseScreen({ navigation, route }) {
+  const { user }            = useAuth();
+  const { addNotification } = useNotifications();
+  const insets              = useSafeAreaInsets();
+
+  const editing   = route.params?.expense || null;
+  const isEditing = !!editing;
+  const initDate  = editing ? new Date(editing.date) : new Date();
+
+  const [amount,      setAmount]      = useState(editing ? String(editing.amount) : '');
+  const [description, setDescription] = useState(editing?.description || '');
+  const [date,        setDate]        = useState(initDate.toISOString());
+  const [categoryId,  setCategoryId]  = useState(editing?.category_id || null);
+  const [payMethod,   setPayMethod]   = useState(editing?.payment_method || 'Cash');
+  const [loading,     setLoading]     = useState(false);
+  const [catItems,    setCatItems]    = useState([]);
+  const [showDate,    setShowDate]    = useState(false);
+  const [showSuccess, setShowSuccess] = useState(false);
+
+  const btnBottom = useRef(new Animated.Value(insets.bottom + 20)).current;
+
+  useEffect(() => {
+    const showSub = Keyboard.addListener(
+      Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow',
+      (e) => {
+        Animated.spring(btnBottom, {
+          toValue: e.endCoordinates.height + 12,
+          useNativeDriver: false,
+          tension: 80, friction: 10,
+        }).start();
       }
-    }
+    );
+    const hideSub = Keyboard.addListener(
+      Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide',
+      () => {
+        Animated.spring(btnBottom, {
+          toValue: insets.bottom + 20,
+          useNativeDriver: false,
+          tension: 80, friction: 10,
+        }).start();
+      }
+    );
+    return () => { showSub.remove(); hideSub.remove(); };
+  }, [insets.bottom]);
+
+  const PAY_ITEMS = [
+    { label: 'Cash',        value: 'Cash',        rawIcon: '💵' },
+    { label: 'UPI',         value: 'UPI',         rawIcon: '📱' },
+    { label: 'Card',        value: 'Card',        rawIcon: '💳' },
+    { label: 'Net Banking', value: 'Net Banking', rawIcon: '🏦' },
+  ];
+
+
+
+  useEffect(() => {
+    if (!user) return;
+    const rows  = getCategoriesForUser(user.id);
+    const items = rows.map(c => ({ label: c.name, value: c.id, rawIcon: c.icon, rawColor: c.color }));
+    setCatItems(items);
+    if (!isEditing && items.length > 0) setCategoryId(items[0].value);
   }, [user]);
 
   const handleSave = async () => {
     if (!amount || isNaN(Number(amount)) || Number(amount) <= 0) {
-      Alert.alert('Invalid Amount', 'Please enter a valid positive amount');
-      return;
+      Alert.alert('Invalid Amount', 'Please enter a valid positive amount.'); return;
     }
     if (!categoryId) {
-      Alert.alert('Category Required', 'Please select a category');
-      return;
+      Alert.alert('Category Required', 'Please select a category.'); return;
     }
-
     setLoading(true);
     try {
       const payload = {
-        userId: user.id,
-        categoryId,
+        userId: user.id, categoryId,
         amount: parseFloat(amount),
         description: description.trim(),
-        date,
-        paymentMethod,
+        date, paymentMethod: payMethod,
       };
-
       if (isEditing) {
-        updateExpense({ id: editingExpense.id, ...payload });
+        updateExpense({ id: editing.id, ...payload });
       } else {
         addExpense(payload);
-        
-        // Logical Push Notification Check: Did this expense blow the monthly budget?
-        const currentMonthKey = date.substring(0, 7); // 'YYYY-MM'
-        const newTotal = getMonthlyTotal(user.id, currentMonthKey);
-        if (user.monthly_budget && user.monthly_budget > 0 && newTotal > user.monthly_budget) {
-          addNotification({
-            title: 'Budget Exceeded! ⚠️',
-            message: `You've spent ${formatINR(newTotal)}, which exceeds your monthly budget of ${formatINR(user.monthly_budget)}.`,
-            type: 'warning',
-            time: new Date().toISOString(),
-          });
-        } else if (user.monthly_budget && user.monthly_budget > 0 && newTotal > user.monthly_budget * 0.9) {
-          addNotification({
-            title: 'Nearing Budget Limit ⚠️',
-            message: `You've spent ${formatINR(newTotal)}, which is over 90% of your monthly budget.`,
-            type: 'warning',
-            time: new Date().toISOString(),
-          });
+        const mk    = date.substring(0, 7);
+        const total = getMonthlyTotal(user.id, mk);
+        if (user.monthly_budget > 0) {
+          if (total > user.monthly_budget)
+            addNotification({ title: 'Budget Exceeded! ⚠️', message: `Spent ${formatINR(total)}, exceeding your budget.`, type: 'warning', time: new Date().toISOString() });
+          else if (total > user.monthly_budget * 0.9)
+            addNotification({ title: 'Nearing Budget ⚠️', message: 'Over 90% of monthly budget used.', type: 'warning', time: new Date().toISOString() });
         }
       }
-      navigation.goBack();
-    } catch (err) {
-      Alert.alert('Error', err.message);
-    } finally {
+
+      // 🎉 Success: keyboard dismiss → PhonePe animation
+      Keyboard.dismiss();
+      setShowSuccess(true);
+    } catch (e) {
       setLoading(false);
+      Alert.alert('Error', e.message);
     }
   };
 
-  const onDateChange = (event, selectedDate) => {
-    setShowDatePicker(false);
-    if (selectedDate) {
-      setDate(selectedDate.toISOString());
-    }
-  };
+  const selCat = catItems.find(c => c.value === categoryId);
+  const selPay = PAY_ITEMS.find(p => p.value === payMethod);
 
   return (
-    <SafeAreaView style={styles.safeArea} edges={['top', 'bottom']}>
-      <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
-        
-        {/* Header (X - Title - ✓) */}
-        <View style={styles.header}>
-          <TouchableOpacity onPress={() => navigation.goBack()} style={styles.iconBtn}>
-            <X stroke={TEXT_DARK} size={24} />
-          </TouchableOpacity>
-          <Text style={styles.headerTitle}>{isEditing ? 'Edit Expense' : 'Add Expense'}</Text>
-          <TouchableOpacity onPress={handleSave} style={styles.iconBtn} disabled={loading}>
-            {loading ? <ActivityIndicator color={BRAND_PURPLE} /> : <Check stroke={TEXT_DARK} size={24} />}
-          </TouchableOpacity>
-        </View>
-
-        <ScrollView contentContainerStyle={styles.container} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
-          
-          {/* Category Dropdown */}
-          <Text style={styles.label}>Category</Text>
-          <DropDownPicker
-            open={catDropOpen}
-            value={categoryId}
-            items={catItems}
-            setOpen={setCatDropOpen}
-            setValue={setCategoryId}
-            setItems={setCatItems}
-            onOpen={() => setPayDropOpen(false)}
-            style={styles.dropdown}
-            dropDownContainerStyle={styles.dropdownContainer}
-            textStyle={styles.dropdownText}
-            placeholderStyle={{ color: TEXT_MUTED }}
-            placeholder="Select category"
-            listMode="MODAL"
-            modalProps={{ animationType: 'slide' }}
-            modalTitle="Select Category"
-          />
-
-          {/* Amount */}
-          <Text style={styles.label}>Amount</Text>
-          <View style={styles.inputCard}>
-            <Text style={styles.rupeeSymbol}>₹ </Text>
-            <TextInput
-              style={styles.amountInput}
-              placeholder="0.00"
-              placeholderTextColor={TEXT_MUTED}
-              keyboardType="decimal-pad"
-              value={amount}
-              onChangeText={setAmount}
-            />
+    <View style={styles.screen}>
+      <SafeAreaView style={styles.flex} edges={['top']}>
+        <KeyboardAvoidingView
+          style={styles.flex}
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        >
+          {/* ── Header ── */}
+          <View style={styles.header}>
+            <TouchableOpacity style={styles.backBtn} onPress={() => navigation.goBack()}>
+              <ArrowLeft stroke={TEXT_DARK} size={22} />
+            </TouchableOpacity>
+            <Text style={styles.headerTitle}>{isEditing ? 'Edit Expense' : 'Add Expense'}</Text>
+            <View style={{ width: 38 }} />
           </View>
 
-          {/* Date */}
-          <Text style={styles.label}>Date</Text>
-          <TouchableOpacity style={[styles.inputCard, styles.rowBetween]} onPress={() => setShowDatePicker(true)}>
-            <Text style={styles.dateText}>{formatCustomDate(date)}</Text>
-            <CalendarIcon stroke={TEXT_DARK} size={20} />
-          </TouchableOpacity>
-          {showDatePicker && (
-            <DateTimePicker
-              value={new Date(date)}
-              mode="datetime"
-              display="default"
-              maximumDate={new Date()}
-              onChange={onDateChange}
+          {/* ── Amount Hero ── */}
+          <View style={styles.amountHero}>
+            <Text style={styles.amountHint}>Total Amount</Text>
+            <View style={styles.amountRow}>
+              <Text style={styles.currencySymbol}>₹</Text>
+              <TextInput
+                style={styles.amountInput}
+                placeholder="0.00"
+                placeholderTextColor={TEXT_MUTED}
+                keyboardType="decimal-pad"
+                value={amount}
+                onChangeText={setAmount}
+                selectionColor={BRAND}
+                color={TEXT_DARK}
+                includeFontPadding={false}
+                autoFocus={!isEditing}
+              />
+            </View>
+            <View style={styles.amountLine} />
+          </View>
+
+          {/* ── Form Card ── */}
+          {/* paddingBottom makes sure rows aren't hidden behind floating button */}
+          <View style={[styles.card, { marginBottom: BTN_H + 40 + insets.bottom }]}>
+
+            {/* Category */}
+            <Dropdown
+              label="Select Category"
+              value={categoryId}
+              items={catItems}
+              onChange={setCategoryId}
+              placeholder="Choose a category"
+              leftIcon={
+                <View style={[styles.rowIcon, { backgroundColor: (selCat?.rawColor || BRAND) + '20' }]}>
+                  <Text style={{ fontSize: 15 }}>{selCat?.rawIcon || '📦'}</Text>
+                </View>
+              }
             />
-          )}
 
-          {/* Payment Method */}
-          <Text style={styles.label}>Payment Method</Text>
-          <DropDownPicker
-            open={payDropOpen}
-            value={paymentMethod}
-            items={payItems}
-            setOpen={setPayDropOpen}
-            setValue={setPaymentMethod}
-            setItems={setPayItems}
-            onOpen={() => setCatDropOpen(false)}
-            style={styles.dropdown}
-            dropDownContainerStyle={styles.dropdownContainer}
-            textStyle={styles.dropdownText}
-            placeholderStyle={{ color: TEXT_MUTED }}
-            placeholder="Select payment method"
-            listMode="MODAL"
-            modalProps={{ animationType: 'slide' }}
-            modalTitle="Select Payment Method"
-          />
+            <View style={styles.divider} />
 
-          {/* Notes (Optional) */}
-          <Text style={styles.label}>Notes (Optional)</Text>
-          <TextInput
-            style={[styles.inputCard, styles.textArea]}
-            placeholder="What was this for?"
-            placeholderTextColor={TEXT_MUTED}
-            value={description}
-            onChangeText={setDescription}
-            multiline
-            maxLength={120}
-          />
+            {/* Date */}
+            <TouchableOpacity style={styles.row} onPress={() => setShowDate(true)} activeOpacity={0.7}>
+              <View style={styles.rowLeft}>
+                <View style={[styles.rowIcon, { backgroundColor: '#4E65FF20' }]}>
+                  <Calendar stroke="#4E65FF" size={15} />
+                </View>
+                <Text style={styles.rowValue}>{fmtDate(date)}</Text>
+              </View>
+              <ChevronDown stroke={TEXT_MUTED} size={18} />
+            </TouchableOpacity>
+            {showDate && (
+              <DateTimePicker
+                value={new Date(date)} mode="date" display="default" maximumDate={new Date()}
+                onChange={(_, d) => { setShowDate(false); if (d) setDate(d.toISOString()); }}
+              />
+            )}
 
-        </ScrollView>
-      </KeyboardAvoidingView>
-    </SafeAreaView>
+            <View style={styles.divider} />
+
+            {/* Payment */}
+            <Dropdown
+              label="Select Payment Method"
+              value={payMethod}
+              items={PAY_ITEMS}
+              onChange={setPayMethod}
+              placeholder="Choose payment method"
+              leftIcon={
+                <View style={[styles.rowIcon, { backgroundColor: '#10B98120' }]}>
+                  <Text style={{ fontSize: 15 }}>{selPay?.rawIcon || '💳'}</Text>
+                </View>
+              }
+            />
+
+            <View style={styles.divider} />
+
+            {/* Notes */}
+            <View style={styles.row}>
+              <View style={styles.rowLeft}>
+                <View style={[styles.rowIcon, { backgroundColor: '#F59E0B20' }]}>
+                  <FileText stroke="#F59E0B" size={15} />
+                </View>
+                <TextInput
+                  style={styles.notesInput}
+                  placeholder="Add a note (optional)"
+                  placeholderTextColor={TEXT_MUTED}
+                  value={description}
+                  onChangeText={setDescription}
+                  returnKeyType="done"
+                  maxLength={80}
+                />
+              </View>
+            </View>
+
+          </View>
+        </KeyboardAvoidingView>
+      </SafeAreaView>
+
+      {/* ── Floating Save Button (lives outside KAV, animates above keyboard) ── */}
+      <Animated.View style={[styles.floatingBtnWrap, { bottom: btnBottom }]}>
+        <TouchableOpacity style={styles.saveBtn} onPress={handleSave} disabled={loading} activeOpacity={0.85}>
+          {loading
+            ? <ActivityIndicator color="#fff" />
+            : <Text style={styles.saveBtnText}>💾  Save Expense</Text>
+          }
+        </TouchableOpacity>
+      </Animated.View>
+
+      {/* ── PhonePe Style Success Overlay (handles navigation via onDone) ── */}
+      <PhonePeSuccessOverlay
+        visible={showSuccess}
+        onDone={() => {
+          navigation.goBack();
+        }}
+      />
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  safeArea: { flex: 1, backgroundColor: BG_APP },
-  flex: { flex: 1 },
+  screen: { flex: 1, backgroundColor: BG_SCREEN },
+  flex:   { flex: 1 },
+
+  // Header
   header: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    paddingHorizontal: 20, paddingVertical: 12, backgroundColor: BG_APP,
+    paddingHorizontal: 20, paddingVertical: 14, backgroundColor: BG_SCREEN,
   },
-  iconBtn: { padding: 4 },
+  backBtn: {
+    width: 38, height: 38, borderRadius: 12,
+    backgroundColor: BG_WHITE, alignItems: 'center', justifyContent: 'center',
+    shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.07, shadowRadius: 4, elevation: 2,
+  },
   headerTitle: { fontFamily: FONTS.bold, fontSize: 18, color: TEXT_DARK },
-  
-  container: { padding: 20, paddingBottom: 60 },
-  
-  label: { fontFamily: FONTS.semiBold, fontSize: 13, color: TEXT_DARK, marginBottom: 8, marginTop: 20 },
-  
-  inputCard: {
-    backgroundColor: BG_WHITE,
-    borderRadius: 16,
-    paddingHorizontal: 16,
-    minHeight: 56,
-    flexDirection: 'row',
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: BORDER_COLOR,
+
+  // Amount
+  amountHero: { alignItems: 'center', paddingVertical: 18, paddingHorizontal: 24 },
+  amountHint: { fontFamily: FONTS.regular, fontSize: 12, color: TEXT_MUTED, marginBottom: 6 },
+  amountRow:  { flexDirection: 'row', alignItems: 'center' },
+  currencySymbol: { fontFamily: FONTS.bold, fontSize: 28, color: TEXT_DARK, marginRight: 4, marginTop: 6 },
+  amountInput: {
+    fontFamily: FONTS.bold, fontSize: 52, color: TEXT_DARK,
+    minWidth: 100, textAlign: 'center', includeFontPadding: false, paddingVertical: 0,
   },
-  rowBetween: { justifyContent: 'space-between' },
-  
-  rupeeSymbol: { fontFamily: FONTS.bold, fontSize: 18, color: TEXT_DARK },
-  amountInput: { flex: 1, fontFamily: FONTS.bold, fontSize: 18, color: TEXT_DARK },
-  
-  dateText: { fontFamily: FONTS.semiBold, fontSize: 15, color: TEXT_DARK },
-  
-  textArea: {
-    alignItems: 'flex-start',
-    minHeight: 100,
-    paddingVertical: 16,
-    textAlignVertical: 'top',
-    fontFamily: FONTS.medium,
-    fontSize: 15,
-    color: TEXT_DARK,
+  amountLine: { marginTop: 10, height: 3, width: 80, backgroundColor: BRAND, borderRadius: 2, opacity: 0.8 },
+
+  // Card
+  card: {
+    backgroundColor: BG_WHITE, borderRadius: 20,
+    marginHorizontal: 20, overflow: 'hidden',
+    shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.06, shadowRadius: 10, elevation: 3,
   },
 
-  dropdown: {
-    backgroundColor: BG_WHITE,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: BORDER_COLOR,
-    minHeight: 56,
+  // Rows
+  row: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    paddingHorizontal: 16, minHeight: ROW_H,
   },
-  dropdownContainer: {
-    backgroundColor: BG_WHITE,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: BORDER_COLOR,
+  rowLeft:  { flexDirection: 'row', alignItems: 'center', flex: 1 },
+  rowIcon: { width: 32, height: 32, borderRadius: 9, alignItems: 'center', justifyContent: 'center', marginRight: 12 },
+  rowValue: { fontFamily: FONTS.medium, fontSize: 15, color: TEXT_DARK, flex: 1 },
+  divider:  { height: 1, backgroundColor: BORDER, marginLeft: 60 },
+
+  // Notes
+  notesInput: { flex: 1, fontFamily: FONTS.regular, fontSize: 15, color: TEXT_DARK, includeFontPadding: false, paddingVertical: 0 },
+
+  // Floating Save Button
+  floatingBtnWrap: {
+    position: 'absolute', left: BTN_MX, right: BTN_MX,
   },
-  dropdownText: { fontFamily: FONTS.semiBold, fontSize: 15, color: TEXT_DARK },
-  dropdownIconWrap: { width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center' },
-  dropdownIconText: { fontSize: 16 },
+  saveBtn: {
+    backgroundColor: BRAND, borderRadius: 16, height: BTN_H,
+    alignItems: 'center', justifyContent: 'center',
+    shadowColor: BRAND, shadowOffset: { width: 0, height: 5 }, shadowOpacity: 0.35, shadowRadius: 14, elevation: 8,
+  },
+  saveBtnText: { fontFamily: FONTS.bold, fontSize: 16, color: '#FFF', letterSpacing: 0.3 },
+
+  // Bottom Sheet Modal
+  modalRoot: { flex: 1, justifyContent: 'flex-end' },
+  sheet: {
+    backgroundColor: BG_WHITE, borderTopLeftRadius: 26, borderTopRightRadius: 26,
+    maxHeight: '62%', paddingHorizontal: 20, paddingTop: 10,
+    shadowColor: '#000', shadowOffset: { width: 0, height: -3 }, shadowOpacity: 0.09, shadowRadius: 14, elevation: 22,
+  },
+  sheetPill: { width: 38, height: 4, borderRadius: 2, backgroundColor: BORDER, alignSelf: 'center', marginBottom: 16 },
+  sheetTitle: { fontFamily: FONTS.bold, fontSize: 17, color: TEXT_DARK, marginBottom: 10 },
+  sheetRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 14, paddingHorizontal: 10, borderRadius: 12, marginBottom: 2 },
+  sheetRowActive: { backgroundColor: '#FFF0F0' },
+  sheetEmoji: { width: 36, height: 36, borderRadius: 10, alignItems: 'center', justifyContent: 'center', marginRight: 12 },
+  sheetRowLabel: { fontFamily: FONTS.medium, fontSize: 15, color: TEXT_DARK, flex: 1 },
 });

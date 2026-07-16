@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, ScrollView, Dimensions, RefreshControl, LayoutAnimation, Platform, UIManager, Animated as RNAnimated } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, ScrollView, Dimensions, RefreshControl, LayoutAnimation, Platform, UIManager, Animated as RNAnimated, InteractionManager } from 'react-native';
 import Animated, { useSharedValue, useAnimatedStyle, withRepeat, withTiming, Easing, FadeInDown } from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -85,9 +85,6 @@ export default function DashboardScreen({ navigation }) {
       // 3. Get category totals
       const catTotals = getCategoryTotals(user.id, startDate, endDate);
 
-      // Smoothly animate UI updates
-      LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-
       // Calculate pie data
       let formattedPie = catTotals.map(c => ({
         value: Math.round(c.total),
@@ -121,7 +118,10 @@ export default function DashboardScreen({ navigation }) {
 
   useFocusEffect(
     useCallback(() => {
-      loadData();
+      const task = InteractionManager.runAfterInteractions(() => {
+        loadData();
+      });
+      return () => task.cancel();
     }, [loadData])
   );
 
