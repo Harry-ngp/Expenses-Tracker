@@ -39,14 +39,14 @@ if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental
 
 export default function DashboardScreen({ navigation }) {
   const { user } = useAuth();
-  
+
   // Data state
   const [selectedMonth, setSelectedMonth] = useState(generateMonthOptions()[0].value);
   const [monthTotal, setMonthTotal] = useState(0);
   const [recentExpenses, setRecentExpenses] = useState([]);
   const [pieData, setPieData] = useState([]);
   const [refreshing, setRefreshing] = useState(false);
-  
+
   // Advanced breathing animation for FAB
   const fabScale = useSharedValue(1);
 
@@ -84,10 +84,10 @@ export default function DashboardScreen({ navigation }) {
 
       // 3. Get category totals
       const catTotals = getCategoryTotals(user.id, startDate, endDate);
-      
+
       // Smoothly animate UI updates
       LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-      
+
       // Calculate pie data
       let formattedPie = catTotals.map(c => ({
         value: Math.round(c.total),
@@ -98,14 +98,14 @@ export default function DashboardScreen({ navigation }) {
 
       // If empty, put a placeholder so it doesn't look completely empty
       if (formattedPie.length === 0) {
-         formattedPie = [{ value: 100, color: '#E4E7ED', label: 'No Data', icon: '⚪' }];
+        formattedPie = [{ value: 100, color: '#E4E7ED', label: 'No Data', icon: '⚪' }];
       }
       setPieData(formattedPie);
-      
+
       // 4. Animate progress bar (budget logic)
       const budget = user?.monthly_budget || 25000; // fallback to 25k if not set
       const actualPct = budget > 0 ? Math.round((total / budget) * 100) : 0;
-      
+
       RNAnimated.timing(progressAnim, {
         toValue: Math.min(actualPct, 100),
         duration: 1500,
@@ -131,7 +131,7 @@ export default function DashboardScreen({ navigation }) {
 
   const budget = user?.monthly_budget || 25000;
   const actualPct = budget > 0 ? Math.round((monthTotal / budget) * 100) : 0;
-  
+
   // Progress bar color
   let progressColor = '#10B981'; // Green
   if (actualPct >= 90) progressColor = '#EF4444'; // Red
@@ -140,22 +140,22 @@ export default function DashboardScreen({ navigation }) {
   return (
     <View style={styles.safeArea}>
       <AnimatedBackground />
-      <ScrollView 
-        contentContainerStyle={styles.scrollContent} 
+      <ScrollView
+        contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
       >
-        
+
         {/* 2. Total Expenses Card */}
         <View style={{ marginHorizontal: 20, zIndex: 3000 }}>
-          <LinearGradient 
-            colors={[BRAND_PURPLE, '#8862F8']} 
-            start={{x: 0, y: 0}} end={{x: 1, y: 1}}
+          <LinearGradient
+            colors={[BRAND_PURPLE, '#8862F8']}
+            start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}
             style={styles.totalCard}
           >
             <View style={styles.rowBetween}>
               <Text style={styles.totalCardLabel}>Total Expenses</Text>
-              
+
               {/* Dropdown for Month Selection */}
               <View style={styles.dropdownContainerWrapper}>
                 <DropDownPicker
@@ -165,7 +165,7 @@ export default function DashboardScreen({ navigation }) {
                   setOpen={setMonthDropOpen}
                   setValue={setSelectedMonth}
                   setItems={setMonthItems}
-                  listMode="SCROLLVIEW"
+                  listMode="SCROLLVIEW,MODAL"
                   style={styles.monthDropdown}
                   dropDownContainerStyle={styles.monthDropdownList}
                   textStyle={styles.monthDropdownText}
@@ -173,7 +173,6 @@ export default function DashboardScreen({ navigation }) {
                   arrowIconStyle={{ tintColor: '#fff', width: 15, height: 15 }}
                   tickIconStyle={{ tintColor: BRAND_PURPLE }}
                   placeholder="Select Month"
-                  listMode="MODAL"
                   modalProps={{ animationType: 'fade' }}
                   modalTitle="Select Month"
                 />
@@ -190,7 +189,7 @@ export default function DashboardScreen({ navigation }) {
             <Text style={styles.budgetLabel}>Monthly Budget</Text>
             <Text style={styles.budgetSubLabel}>of ₹ {budget.toLocaleString('en-IN')}.00</Text>
           </View>
-          
+
           <View style={[styles.rowBetween, { marginBottom: 8, alignItems: 'flex-end' }]}>
             <Text style={styles.budgetAmount}>₹ {budget.toLocaleString('en-IN')}.00</Text>
             <Text style={styles.budgetPercent}>{actualPct}%</Text>
@@ -198,8 +197,8 @@ export default function DashboardScreen({ navigation }) {
 
           <View style={styles.progressBg}>
             <RNAnimated.View style={[
-              styles.progressFill, 
-              { 
+              styles.progressFill,
+              {
                 width: progressAnim.interpolate({
                   inputRange: [0, 100],
                   outputRange: ['0%', '100%']
@@ -213,7 +212,7 @@ export default function DashboardScreen({ navigation }) {
         {/* 4. Expenses Overview */}
         <View style={styles.sectionWrap}>
           <Text style={styles.sectionTitle}>Expenses Overview</Text>
-          
+
           <View style={styles.overviewCard}>
             <View style={styles.pieWrap}>
               <PieChart
@@ -223,7 +222,7 @@ export default function DashboardScreen({ navigation }) {
                 innerRadius={45}
                 centerLabelComponent={() => (
                   <View style={styles.pieCenter}>
-                    <Text style={styles.pieCenterAmount}>₹ {monthTotal > 1000 ? (monthTotal/1000).toFixed(1) + 'k' : monthTotal}</Text>
+                    <Text style={styles.pieCenterAmount}>₹ {monthTotal > 1000 ? (monthTotal / 1000).toFixed(1) + 'k' : monthTotal}</Text>
                     <Text style={styles.pieCenterSub}>This Month</Text>
                   </View>
                 )}
@@ -295,7 +294,7 @@ const softShadow = {
 const styles = StyleSheet.create({
   safeArea: { flex: 1, backgroundColor: 'transparent' },
   scrollContent: { paddingBottom: 100 },
-  
+
   header: {
     flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
     paddingHorizontal: 20, paddingVertical: 12,
@@ -305,7 +304,7 @@ const styles = StyleSheet.create({
   iconBtn: { padding: 4 },
 
   rowBetween: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  
+
   // Total Expenses Card
   totalCard: {
     marginTop: 16, marginBottom: 20,
@@ -313,7 +312,7 @@ const styles = StyleSheet.create({
     ...softShadow, shadowColor: BRAND_PURPLE, shadowOpacity: 0.25,
   },
   totalCardLabel: { fontFamily: FONTS.medium, fontSize: 14, color: 'rgba(255,255,255,0.85)' },
-  
+
   dropdownContainerWrapper: {
     width: 135, // slightly wider for longer month names
   },
@@ -357,7 +356,7 @@ const styles = StyleSheet.create({
   // Sections
   sectionWrap: { marginHorizontal: 20, marginBottom: 24 },
   sectionTitle: { fontFamily: FONTS.bold, fontSize: 18, color: TEXT_DARK, marginBottom: 16 },
-  
+
   // Overview Card (Donut)
   overviewCard: {
     backgroundColor: BG_WHITE, borderRadius: 20, padding: 20,
@@ -368,7 +367,7 @@ const styles = StyleSheet.create({
   pieCenter: { alignItems: 'center', justifyContent: 'center' },
   pieCenterAmount: { fontFamily: FONTS.bold, fontSize: 16, color: TEXT_DARK },
   pieCenterSub: { fontFamily: FONTS.medium, fontSize: 10, color: TEXT_MUTED, marginTop: 2 },
-  
+
   legendWrap: { flex: 0.55, gap: 10, paddingLeft: 12 },
   legendRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   legendLabelGroup: { flexDirection: 'row', alignItems: 'center', flex: 1 },

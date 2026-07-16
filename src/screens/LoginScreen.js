@@ -56,7 +56,7 @@ export default function LoginScreen({ navigation }) {
     <LinearGradient colors={['#0F0F1A', '#1A0A2E', '#0F0F1A']} style={styles.gradient}>
       <KeyboardAvoidingView
         style={styles.flex}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       >
         <ScrollView
           contentContainerStyle={styles.container}

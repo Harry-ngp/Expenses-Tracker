@@ -82,7 +82,7 @@ export default function RegisterScreen({ navigation }) {
 
   return (
     <LinearGradient colors={['#0F0F1A', '#1A0A2E', '#0F0F1A']} style={styles.gradient}>
-      <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+      <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
         <ScrollView
           contentContainerStyle={styles.container}
           keyboardShouldPersistTaps="handled"
