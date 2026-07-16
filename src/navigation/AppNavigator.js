@@ -252,7 +252,34 @@ const AppNavigator = () => {
             <Stack.Screen
               name="AddExpense"
               component={AddExpenseScreen}
-              options={{ presentation: 'modal', cardStyle: { backgroundColor: 'transparent' } }}
+              options={{ 
+                presentation: 'modal', 
+                cardStyle: { backgroundColor: 'transparent' },
+                cardStyleInterpolator: ({ current, layouts }) => {
+                  return {
+                    cardStyle: {
+                      transform: [
+                        {
+                          scale: current.progress.interpolate({
+                            inputRange: [0, 1],
+                            outputRange: [0, 1],
+                          }),
+                        },
+                        {
+                          translateY: current.progress.interpolate({
+                            inputRange: [0, 1],
+                            outputRange: [layouts.screen.height / 2, 0], // Scale from bottom center
+                          }),
+                        }
+                      ],
+                      opacity: current.progress.interpolate({
+                        inputRange: [0, 0.5, 1],
+                        outputRange: [0, 1, 1],
+                      })
+                    },
+                  };
+                }
+              }}
             />
             <Stack.Screen
               name="BudgetSettings"

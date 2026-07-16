@@ -1,6 +1,6 @@
 import React, { useState, useCallback, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, RefreshControl, Animated as RNAnimated, LayoutAnimation, Platform, UIManager } from 'react-native';
-import Animated, { useSharedValue, useAnimatedStyle, withRepeat, withTiming, Easing } from 'react-native-reanimated';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TouchableWithoutFeedback, RefreshControl, Animated as RNAnimated, LayoutAnimation, Platform, UIManager, Image } from 'react-native';
+import Animated, { useSharedValue, useAnimatedStyle, withRepeat, withTiming, Easing, withSpring, interpolate } from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { Settings2, ChevronDown, Plus, PiggyBank } from 'lucide-react-native';
@@ -97,7 +97,14 @@ export default function BudgetOverviewScreen() {
     transform: [{ scale: fabScale.value }],
   }));
 
-  useFocusEffect(useCallback(() => { loadData(); }, [loadData]));
+  // Flip Animation State
+  const isFlipped = useSharedValue(0);
+
+  useFocusEffect(useCallback(() => { 
+    loadData(); 
+    // Reset flip when screen gains focus
+    isFlipped.value = 0;
+  }, [loadData, isFlipped]));
 
   const overallBudget = user?.monthly_budget || 0;
   const isExceeded = overallBudget > 0 && monthTotal > overallBudget;
@@ -110,6 +117,37 @@ export default function BudgetOverviewScreen() {
   else if (pct >= 70) barColor = '#F59E0B';
 
   const remaining = Math.max(overallBudget - monthTotal, 0);
+
+  // Daily allowance calculation
+  const [year, month] = selectedMonth.split('-');
+  const daysInMonth = new Date(year, month, 0).getDate();
+  const today = new Date();
+  let daysPassed = 0;
+  if (today.getFullYear() == year && (today.getMonth() + 1) == month) {
+    daysPassed = today.getDate();
+  } else if (new Date(year, month - 1) < today) {
+    daysPassed = daysInMonth; // past month
+  }
+  const daysLeft = Math.max(daysInMonth - daysPassed, 1);
+  const dailyAllowance = Math.floor(remaining / daysLeft);
+
+  const handleFlip = () => {
+    isFlipped.value = withSpring(isFlipped.value === 0 ? 1 : 0, { damping: 15, stiffness: 120 });
+  };
+
+  const frontAnimatedStyle = useAnimatedStyle(() => {
+    const rotateVal = interpolate(isFlipped.value, [0, 1], [0, 180]);
+    return {
+      transform: [{ perspective: 1000 }, { rotateY: `${rotateVal}deg` }],
+    };
+  });
+
+  const backAnimatedStyle = useAnimatedStyle(() => {
+    const rotateVal = interpolate(isFlipped.value, [0, 1], [180, 360]);
+    return {
+      transform: [{ perspective: 1000 }, { rotateY: `${rotateVal}deg` }],
+    };
+  });
 
   return (
     <View style={styles.safeArea}>
@@ -133,47 +171,80 @@ export default function BudgetOverviewScreen() {
           </View>
         )}
 
-        {/* Monthly Budget Card */}
+        {/* Monthly Budget Card (Flippable) */}
         {overallBudget > 0 ? (
-          <View style={[styles.budgetCard, { zIndex: 1000 }]}>
-            <View style={styles.budgetRow}>
-              <View>
-                <Text style={styles.budgetLabel}>Monthly Budget</Text>
-                <Text style={styles.budgetOfLabel}>of {formatINR(overallBudget)}</Text>
+          <View style={{ zIndex: 1000 }}>
+            {/* Front of Card */}
+            <Animated.View style={[styles.budgetCard, frontAnimatedStyle, { backfaceVisibility: 'hidden' }]}>
+              <View style={styles.budgetRow}>
+                <View>
+                  <Text style={styles.budgetLabel}>Monthly Budget</Text>
+                  <Text style={styles.budgetOfLabel}>of {formatINR(overallBudget)}</Text>
+                </View>
+                <View style={styles.dropdownContainerWrapper}>
+                  <DropDownPicker
+                    open={monthDropOpen}
+                    value={selectedMonth}
+                    items={monthItems}
+                    setOpen={setMonthDropOpen}
+                    setValue={setSelectedMonth}
+                    setItems={setMonthItems}
+                    style={styles.dropdown}
+                    textStyle={styles.dropdownText}
+                    dropDownContainerStyle={styles.dropdownList}
+                    arrowIconStyle={styles.dropdownArrow}
+                    listMode="MODAL"
+                    modalProps={{ animationType: 'fade' }}
+                    modalTitle="Select Month"
+                  />
+                </View>
               </View>
-              <View style={styles.dropdownContainerWrapper}>
-                <DropDownPicker
-                  open={monthDropOpen}
-                  value={selectedMonth}
-                  items={monthItems}
-                  setOpen={setMonthDropOpen}
-                  setValue={setSelectedMonth}
-                  setItems={setMonthItems}
-                  style={styles.dropdown}
-                  textStyle={styles.dropdownText}
-                  dropDownContainerStyle={styles.dropdownList}
-                  arrowIconStyle={styles.dropdownArrow}
-                  listMode="MODAL"
-                  modalProps={{ animationType: 'fade' }}
-                  modalTitle="Select Month"
-                />
-              </View>
-            </View>
-            <Text style={styles.budgetAmount}>{formatINR(monthTotal)}</Text>
+              
+              <TouchableWithoutFeedback onPress={handleFlip}>
+                <View style={{ marginTop: 8 }}>
+                  <Text style={styles.budgetAmount}>{formatINR(monthTotal)}</Text>
 
-            {/* Progress bar */}
-            <View style={styles.progressBg}>
-              <View style={[styles.progressFill, { width: `${pct}%`, backgroundColor: barColor }]} />
-            </View>
+                  {/* Progress bar */}
+                  <View style={styles.progressBg}>
+                    <View style={[styles.progressFill, { width: `${pct}%`, backgroundColor: barColor }]} />
+                  </View>
 
-            <View style={styles.budgetFooter}>
-              <Text style={styles.budgetRemaining}>
-                {isExceeded
-                  ? `${formatINR(overAmount)} over budget`
-                  : `${formatINR(remaining)} left`}
-              </Text>
-              <Text style={[styles.budgetPct, { color: barColor }]}>{pct}%</Text>
-            </View>
+                  <View style={styles.budgetFooter}>
+                    <Text style={styles.budgetRemaining}>
+                      {isExceeded
+                        ? `${formatINR(overAmount)} over budget`
+                        : `${formatINR(remaining)} left`}
+                    </Text>
+                    <Text style={[styles.budgetPct, { color: barColor }]}>{pct}%</Text>
+                  </View>
+                  
+                  <Text style={styles.tapToFlipText}>Tap to flip for daily breakdown ↺</Text>
+                </View>
+              </TouchableWithoutFeedback>
+            </Animated.View>
+
+            {/* Back of Card */}
+            <Animated.View style={[styles.budgetCard, backAnimatedStyle, { backfaceVisibility: 'hidden', position: 'absolute', top: 0, left: 0, right: 0, bottom: 24, overflow: 'hidden', padding: 0 }]}>
+              <TouchableWithoutFeedback onPress={handleFlip}>
+                <View style={{ flex: 1, padding: 24, justifyContent: 'center' }}>
+                  <LinearGradient
+                    colors={['#FF6B6B', '#8862F8']}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 1 }}
+                    style={StyleSheet.absoluteFillObject}
+                  />
+
+                  <View style={{ zIndex: 2, alignItems: 'center' }}>
+                    <Text style={{ fontFamily: FONTS.semiBold, fontSize: 14, color: 'rgba(255,255,255,0.8)', marginBottom: 8, textTransform: 'uppercase', letterSpacing: 1 }}>Daily Allowance</Text>
+                    <Text style={{ fontFamily: FONTS.bold, fontSize: 36, color: '#FFF' }}>{formatINR(dailyAllowance)}</Text>
+                    
+                    <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 16, backgroundColor: 'rgba(255,255,255,0.15)', paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20 }}>
+                      <Text style={{ fontFamily: FONTS.medium, fontSize: 13, color: '#FFF' }}>{daysLeft} {daysLeft === 1 ? 'day' : 'days'} remaining</Text>
+                    </View>
+                  </View>
+                </View>
+              </TouchableWithoutFeedback>
+            </Animated.View>
           </View>
         ) : (
           <View style={[styles.setBudgetCard, { zIndex: 1000 }]}>
@@ -278,7 +349,7 @@ const styles = StyleSheet.create({
 
   header: {
     flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
-    paddingHorizontal: 20, paddingVertical: 12,
+    paddingHorizontal: 20, paddingVertical: 6,
     backgroundColor: 'transparent',
   },headerTitle: { fontFamily: FONTS.bold, fontSize: FONTS.sizes.xxl, color: TEXT_DARK },
   iconBtn: { padding: 6, borderRadius: RADIUS.md, backgroundColor: '#FFF', ...SHADOWS.card },
