@@ -34,7 +34,8 @@
           "android": {
             "enableBuildCache": true,
             "enableProguardInReleaseBuilds": true,
-            "shrinkResourcesInReleaseBuilds": true
+            "shrinkResourcesInReleaseBuilds": true,
+            "proguardRules": "-dontwarn expo.modules.**\n-keep class expo.modules.** { *; }\n-dontwarn com.facebook.react.**\n-keep class com.facebook.react.** { *; }"
           }
         }
       ]
