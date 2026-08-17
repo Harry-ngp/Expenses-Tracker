@@ -8,6 +8,7 @@ import {
 } from 'lucide-react-native';
 import { useAuth } from '../context/AuthContext';
 import { FONTS, SHADOWS, RADIUS } from '../constants/theme';
+import { exportUserDataBackup, importUserDataBackup } from '../utils/backupHelpers';
 
 const BRAND_PURPLE = '#FF6B6B'; // Sunset Horizon Primary
 const BG_APP = '#F7F8FA';
@@ -90,12 +91,24 @@ export default function MenuScreen() {
           <View style={styles.divider} />
           <MenuRow
             icon={HardDrive} iconColor="#6B7280" label="Backup & Restore"
-            onPress={() => Alert.alert('Coming Soon', 'Backup & Restore coming soon.')}
+            onPress={() => {
+              Alert.alert('Backup & Restore', 'Choose an option to manage your data backup:', [
+                {
+                  text: 'Export Backup',
+                  onPress: () => exportUserDataBackup(user),
+                },
+                {
+                  text: 'Import Backup',
+                  onPress: () => importUserDataBackup(user, () => navigation.navigate('Main', { screen: 'Dashboard' })),
+                },
+                { text: 'Cancel', style: 'cancel' },
+              ]);
+            }}
           />
           <View style={styles.divider} />
           <MenuRow
             icon={Download} iconColor="#8B5CF6" label="Export Data"
-            onPress={() => Alert.alert('Coming Soon', 'Data export coming soon.')}
+            onPress={() => exportUserDataBackup(user)}
           />
         </View>
 
