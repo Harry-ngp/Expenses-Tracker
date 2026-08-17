@@ -27,7 +27,22 @@
         {
           "enableFTS": true
         }
+      ],
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "enableBuildCache": true,
+            "enableProguardInReleaseBuilds": true,
+            "shrinkResourcesInReleaseBuilds": true
+          }
+        }
       ]
-    ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "bb97ed85-338d-471b-9f2a-dd726eefb427"
+      }
+    }
   }
 }

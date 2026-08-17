@@ -211,13 +211,14 @@ function Dropdown({ label, value, items, onChange, placeholder, leftIcon }) {
                 data={items}
                 keyExtractor={i => String(i.value)}
                 showsVerticalScrollIndicator={false}
-                contentContainerStyle={{ paddingBottom: 32 }}
+                nestedScrollEnabled={true}
+                contentContainerStyle={{ paddingBottom: 50 }}
                 renderItem={({ item }) => {
                   const sel = item.value === value;
                   return (
                     <TouchableOpacity
                       style={[styles.sheetRow, sel && styles.sheetRowActive]}
-                      onPressIn={() => select(item.value)}
+                      onPress={() => select(item.value)}
                       activeOpacity={0.55}
                     >
                       {item.rawIcon ? (
