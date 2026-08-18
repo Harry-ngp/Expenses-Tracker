@@ -27,7 +27,8 @@
         {
           "enableFTS": true
         }
-      ]
+      ],
+      "expo-build-properties"
     ],
     "extra": {
       "eas": {
