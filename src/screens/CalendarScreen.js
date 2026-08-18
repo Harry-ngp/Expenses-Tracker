@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { View, Text, StyleSheet, FlatList, TouchableOpacity } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Calendar } from 'react-native-calendars';
@@ -25,7 +25,7 @@ export default function CalendarScreen() {
   const loadMonthData = useCallback((monthStr) => {
     if (!user) return;
     const start = `${monthStr}-01`;
-    const end = `${monthStr}-31`; // Approx, SQLite handles it
+    const end = `${monthStr}-31`;
     const totals = getDailyTotals(user.id, start, end);
     setDailyTotals(totals);
   }, [user]);
@@ -36,6 +36,14 @@ export default function CalendarScreen() {
     const data = getExpenses({ userId: user.id, startDate: dateStr, endDate: dateStr });
     setDayExpenses(data);
   }, [user]);
+
+  useEffect(() => {
+    loadMonthData(currentMonth);
+  }, [currentMonth, loadMonthData]);
+
+  useEffect(() => {
+    loadDayData(selectedDate);
+  }, [selectedDate, loadDayData]);
 
   useFocusEffect(
     useCallback(() => {

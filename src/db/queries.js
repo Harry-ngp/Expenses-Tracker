@@ -80,8 +80,8 @@ export const getExpenses = ({ userId, categoryId, startDate, endDate, minAmount,
   const params = [userId];
 
   if (categoryId) { query += ' AND e.category_id = ?'; params.push(categoryId); }
-  if (startDate)  { query += ' AND e.date >= ?';        params.push(startDate); }
-  if (endDate)    { query += ' AND e.date <= ?';         params.push(endDate); }
+  if (startDate)  { query += ' AND substr(e.date, 1, 10) >= ?'; params.push(startDate); }
+  if (endDate)    { query += ' AND substr(e.date, 1, 10) <= ?'; params.push(endDate); }
   if (minAmount != null) { query += ' AND e.amount >= ?'; params.push(minAmount); }
   if (maxAmount != null) { query += ' AND e.amount <= ?'; params.push(maxAmount); }
   if (search)     { query += ' AND e.description LIKE ?'; params.push(`%${search}%`); }
@@ -95,28 +95,26 @@ export const getExpenses = ({ userId, categoryId, startDate, endDate, minAmount,
  */
 export const getMonthlyTotal = (userId, monthKey) => {
   const db = getDb();
-  const start = `${monthKey}-01`;
-  const end   = `${monthKey}-31`;
   const row = db.getFirstSync(
     `SELECT COALESCE(SUM(amount), 0) as total
      FROM expenses
-     WHERE user_id = ? AND date BETWEEN ? AND ?;`,
-    [userId, start, end]
+     WHERE user_id = ? AND substr(date, 1, 7) = ?;`,
+    [userId, monthKey]
   );
   return row?.total || 0;
 };
 
 /**
- * Returns daily totals for a date range — for charts.
+ * Returns daily totals for a date range — for charts and calendar view.
  * Result: [{ date: 'YYYY-MM-DD', total: number }, ...]
  */
 export const getDailyTotals = (userId, startDate, endDate) => {
   const db = getDb();
   return db.getAllSync(
-    `SELECT date, SUM(amount) as total
+    `SELECT substr(date, 1, 10) as date, SUM(amount) as total
      FROM expenses
-     WHERE user_id = ? AND date BETWEEN ? AND ?
-     GROUP BY date
+     WHERE user_id = ? AND substr(date, 1, 10) >= ? AND substr(date, 1, 10) <= ?
+     GROUP BY substr(date, 1, 10)
      ORDER BY date ASC;`,
     [userId, startDate, endDate]
   );
@@ -129,12 +127,12 @@ export const getDailyTotals = (userId, startDate, endDate) => {
 export const getMonthlyTotals = (userId, startDate, endDate) => {
   const db = getDb();
   return db.getAllSync(
-    `SELECT strftime('%Y-%m', date) as month, SUM(amount) as total
+    `SELECT substr(date, 1, 7) as month, SUM(amount) as total
      FROM expenses
-     WHERE user_id = ? AND date BETWEEN ? AND ?
+     WHERE user_id = ? AND substr(date, 1, 7) >= ? AND substr(date, 1, 7) <= ?
      GROUP BY month
      ORDER BY month ASC;`,
-    [userId, startDate, endDate]
+    [userId, startDate.substring(0, 7), endDate.substring(0, 7)]
   );
 };
 
