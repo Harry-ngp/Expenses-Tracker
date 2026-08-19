@@ -36,7 +36,7 @@ const Field = ({ label, icon, value, onChangeText, errorKey, errors, setErrors, 
 
 // ─── Screen ────────────────────────────────────────────────────────────────
 export default function RegisterScreen({ navigation }) {
-  const { login } = useAuth();
+  const { register } = useAuth();
   const [username, setUsername] = useState('');
   const [email, setEmail]       = useState('');
   const [password, setPassword] = useState('');
@@ -67,14 +67,26 @@ export default function RegisterScreen({ navigation }) {
     try {
       const existing = getUserByEmail(email.toLowerCase().trim());
       if (existing) {
-        setErrors({ email: 'This email is already registered' });
+        setErrors({ email: 'This email is already registered locally' });
         return;
       }
-      const hash   = await hashPassword(password);
-      const userId = createUser(email.toLowerCase().trim(), username.trim(), hash);
-      login({ id: userId, email: email.toLowerCase().trim(), username: username.trim(), monthly_budget: 0 });
+      
+      const data = await register(email.toLowerCase().trim(), password, username.trim());
+      // AuthContext will handle local SQLite creation via onAuthStateChange IF it logs in immediately.
+      // But if email confirmation is required, session will be null.
+      if (!data?.session) {
+        Alert.alert(
+          'Registration Successful! 🎉', 
+          'Please check your email to verify your account before logging in.',
+          [{ text: 'OK', onPress: () => navigation.navigate('Login') }]
+        );
+      }
     } catch (err) {
-      Alert.alert('Registration Failed', err.message);
+      if (err.message.includes('User already registered')) {
+        setErrors({ email: 'This email is already registered online' });
+      } else {
+        Alert.alert('Registration Failed', err.message);
+      }
     } finally {
       setLoading(false);
     }

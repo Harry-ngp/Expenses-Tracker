@@ -13,6 +13,8 @@ import { useNavigation } from '@react-navigation/native';
 import { useAuth } from '../context/AuthContext';
 import { useNotifications } from '../context/NotificationContext';
 import { FONTS } from '../constants/theme';
+import NetInfo from '@react-native-community/netinfo';
+import { syncUp, syncDown } from '../utils/syncManager';
 
 
 import LoginScreen           from '../screens/LoginScreen';
@@ -238,6 +240,30 @@ const MainTabs = () => {
 // ── Root navigator ──────────────────────────────────────────────
 const AppNavigator = () => {
   const { user, loading } = useAuth();
+
+  React.useEffect(() => {
+    if (!user) return;
+    
+    // Auto-sync when network comes back online
+    const unsubscribe = NetInfo.addEventListener(state => {
+      if (state.isConnected) {
+        syncDown(user)
+          .then(() => syncUp(user))
+          .catch(err => console.log('Auto-sync failed:', err));
+      }
+    });
+    
+    // Initial sync on mount
+    NetInfo.fetch().then(state => {
+      if (state.isConnected) {
+        syncDown(user)
+          .then(() => syncUp(user))
+          .catch(err => console.log('Initial sync failed:', err));
+      }
+    });
+    
+    return () => unsubscribe();
+  }, [user]);
 
   if (loading) {
     return (

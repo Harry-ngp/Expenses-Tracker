@@ -13,6 +13,7 @@ import { useAuth } from '../context/AuthContext';
 import { useNotifications } from '../context/NotificationContext';
 import { addExpense, updateExpense, getCategoriesForUser, getMonthlyTotal } from '../db/queries';
 import { formatINR } from '../utils/dateHelpers';
+import { syncUp } from '../utils/syncManager';
 import Svg, { Path, Circle } from 'react-native-svg';
 
 const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
@@ -339,6 +340,10 @@ export default function AddExpenseScreen({ navigation, route }) {
       // 🎉 Success: keyboard dismiss → PhonePe animation
       Keyboard.dismiss();
       setShowSuccess(true);
+      
+      // Trigger background sync after mutation
+      syncUp(user).catch(err => console.log('Background sync failed:', err));
+
     } catch (e) {
       setLoading(false);
       Alert.alert('Error', e.message);

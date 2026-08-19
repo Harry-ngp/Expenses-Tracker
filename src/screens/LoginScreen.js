@@ -34,19 +34,14 @@ export default function LoginScreen({ navigation }) {
     if (!validate()) return;
     setLoading(true);
     try {
-      const user = getUserByEmail(email.toLowerCase().trim());
-      if (!user) {
-        setErrors({ email: 'No account found with this email' });
-        return;
-      }
-      const match = await verifyPassword(password, user.password_hash);
-      if (!match) {
-        setErrors({ password: 'Incorrect password' });
-        return;
-      }
-      login({ id: user.id, email: user.email, username: user.username, monthly_budget: user.monthly_budget });
+      await login(email.toLowerCase().trim(), password);
+      // AuthContext will handle the local user sync and navigation automatically
     } catch (err) {
-      Alert.alert('Error', err.message);
+      if (err.message.includes('Invalid login credentials')) {
+        setErrors({ email: 'Invalid login credentials' });
+      } else {
+        Alert.alert('Login Failed', err.message);
+      }
     } finally {
       setLoading(false);
     }

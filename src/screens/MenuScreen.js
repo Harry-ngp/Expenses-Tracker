@@ -3,12 +3,16 @@ import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Alert } from 'rea
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import {
-  PieChart, BarChart2, Tag, CreditCard, HardDrive,
+  PieChart, BarChart2, Tag, CreditCard, HardDrive, Cloud,
   Download, Settings, HelpCircle, Info, LogOut, ChevronRight, Calendar, Bell
 } from 'lucide-react-native';
 import { useAuth } from '../context/AuthContext';
 import { FONTS, SHADOWS, RADIUS } from '../constants/theme';
 import { exportUserDataBackup, importUserDataBackup } from '../utils/backupHelpers';
+import { syncUp, syncDown } from '../utils/syncManager';
+import { getDb } from '../db/schema';
+import { useFocusEffect } from '@react-navigation/native';
+import { useState, useCallback } from 'react';
 
 const BRAND_PURPLE = '#FF6B6B'; // Sunset Horizon Primary
 const BG_APP = '#F7F8FA';
@@ -30,10 +34,52 @@ const MenuRow = ({ icon: Icon, iconColor, label, onPress, rightElement }) => (
 export default function MenuScreen() {
   const { user, logout } = useAuth();
   const navigation = useNavigation();
+  const [syncing, setSyncing] = useState(false);
+  const [expenseCount, setExpenseCount] = useState(0);
 
   const initials = user?.username
     ? user.username.substring(0, 2).toUpperCase()
     : 'JD';
+
+  const loadStats = () => {
+    try {
+      if (!user) return;
+      const db = getDb();
+      const res = db.getFirstSync(
+        `SELECT COUNT(*) as count FROM expenses WHERE user_id = ?;`,
+        [user.id]
+      );
+      if (res) setExpenseCount(res.count);
+    } catch (e) {
+      console.error('Failed to load menu stats', e);
+    }
+  };
+
+  useFocusEffect(
+    useCallback(() => {
+      loadStats();
+    }, [user])
+  );
+
+  const handleManualSync = async () => {
+    if (syncing) return;
+    setSyncing(true);
+    try {
+      const downResult = await syncDown(user);
+      const upResult = await syncUp(user);
+      
+      if (upResult.success || downResult.success) {
+        Alert.alert('Sync Successful', 'Your data is up to date with the cloud.');
+        loadStats();
+      } else {
+        Alert.alert('Sync Notice', upResult.message || downResult.message || 'Could not sync.');
+      }
+    } catch (error) {
+      Alert.alert('Sync Error', error.message || 'An unexpected error occurred.');
+    } finally {
+      setSyncing(false);
+    }
+  };
 
   const handleLogout = () => {
     Alert.alert('Logout', 'Are you sure you want to log out?', [
@@ -104,6 +150,12 @@ export default function MenuScreen() {
                 { text: 'Cancel', style: 'cancel' },
               ]);
             }}
+          />
+          <View style={styles.divider} />
+          <MenuRow
+            icon={Cloud} iconColor="#3B82F6" label="Sync Data Now"
+            onPress={handleManualSync}
+            rightElement={syncing ? <Text style={{color: TEXT_MUTED}}>Syncing...</Text> : null}
           />
           <View style={styles.divider} />
           <MenuRow
