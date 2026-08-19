@@ -117,7 +117,7 @@ export const syncDown = async (user) => {
       if (Array.isArray(backupData.categories)) {
         for (const cat of backupData.categories) {
           db.runSync(
-            'INSERT INTO categories (id, user_id, name, icon, color) VALUES (?, ?, ?, ?, ?)',
+            'INSERT OR IGNORE INTO categories (id, user_id, name, icon, color) VALUES (?, ?, ?, ?, ?)',
             [cat.id, cat.user_id || user.id, cat.name, cat.icon, cat.color]
           );
         }
@@ -126,7 +126,7 @@ export const syncDown = async (user) => {
       if (Array.isArray(backupData.categoryBudgets)) {
         for (const cb of backupData.categoryBudgets) {
           db.runSync(
-            'INSERT INTO category_budgets (user_id, category_id, budget) VALUES (?, ?, ?)',
+            'INSERT OR REPLACE INTO category_budgets (user_id, category_id, budget) VALUES (?, ?, ?)',
             [user.id, cb.category_id, cb.budget]
           );
         }
@@ -135,7 +135,7 @@ export const syncDown = async (user) => {
       if (Array.isArray(backupData.expenses)) {
         for (const exp of backupData.expenses) {
           db.runSync(
-            `INSERT INTO expenses
+            `INSERT OR REPLACE INTO expenses
                (id, user_id, category_id, amount, currency, payment_method, description, date, updated_at)
              VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now'));`,
             [

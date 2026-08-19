@@ -1,11 +1,13 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase } from '../config/supabase';
+import { syncDown } from '../utils/syncManager';
 import { getDb } from '../db/schema';
 import { getUserByEmail } from '../db/queries';
 
 const AuthContext = createContext(null);
 const AUTH_KEY = '@expenses_user_local'; // keep local profile cached
+const LAST_SYNC_KEY = '@expenses_last_sync_at';
 
 const sanitizeUserData = (data) => {
   if (!data) return null;
@@ -20,6 +22,8 @@ const sanitizeUserData = (data) => {
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null); // { id, email, username, monthly_budget }
   const [loading, setLoading] = useState(true);
+  // Track when login() is handling the flow so the auth listener doesn't race
+  const loginInProgress = useRef(false);
 
   // Initialize Auth
   useEffect(() => {
@@ -37,10 +41,11 @@ export const AuthProvider = ({ children }) => {
         const { data: { session }, error } = await supabase.auth.getSession();
         
         if (session?.user && mounted) {
-          syncLocalUserWithSupabase(session.user);
+          const localUser = await ensureLocalUser(session.user);
+          if (localUser) {
+            setUser(localUser);
+          }
         } else if (!session && mounted) {
-          // If no supabase session, and we are online, maybe we shouldn't be logged in?
-          // Actually, persistSession is true in Supabase, so if it's null, they really are logged out.
           setUser(null);
           await AsyncStorage.removeItem(AUTH_KEY);
         }
@@ -55,8 +60,14 @@ export const AuthProvider = ({ children }) => {
 
     // Listen for Auth state changes (login, logout, token refresh)
     const { data: authListener } = supabase.auth.onAuthStateChange(async (event, session) => {
+      // Skip if login() is handling the flow to avoid race conditions
+      if (loginInProgress.current) return;
+      
       if (event === 'SIGNED_IN' && session?.user) {
-        await syncLocalUserWithSupabase(session.user);
+        const localUser = await ensureLocalUser(session.user);
+        if (localUser) {
+          setUser(localUser);
+        }
       } else if (event === 'SIGNED_OUT') {
         setUser(null);
         await AsyncStorage.removeItem(AUTH_KEY);
@@ -69,8 +80,8 @@ export const AuthProvider = ({ children }) => {
     };
   }, []);
 
-  // Helper to ensure Supabase user exists in local SQLite
-  const syncLocalUserWithSupabase = async (supabaseUser) => {
+  // Helper to ensure Supabase user exists in local SQLite (does NOT call setUser)
+  const ensureLocalUser = async (supabaseUser) => {
     try {
       const email = supabaseUser.email.toLowerCase().trim();
       let localUser = getUserByEmail(email);
@@ -88,18 +99,44 @@ export const AuthProvider = ({ children }) => {
       }
 
       const cleanUser = sanitizeUserData(localUser);
-      setUser(cleanUser);
       await AsyncStorage.setItem(AUTH_KEY, JSON.stringify(cleanUser));
       return cleanUser;
     } catch (err) {
-      console.error('Error syncing local user:', err);
+      console.error('Error ensuring local user:', err);
+      return null;
     }
   };
 
   const login = async (email, password) => {
-    const { data, error } = await supabase.auth.signInWithPassword({ email, password });
-    if (error) throw error;
-    return data;
+    loginInProgress.current = true;
+    try {
+      const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+      if (error) throw error;
+      
+      // 1. Ensure local SQLite user exists
+      const localUser = await ensureLocalUser(data.session.user);
+      
+      if (localUser) {
+        // 2. Clear the last-sync timestamp to force a fresh pull from cloud
+        await AsyncStorage.removeItem(LAST_SYNC_KEY);
+        
+        // 3. Pull the latest cloud data into SQLite BEFORE setting user state
+        //    This ensures Dashboard will mount with fresh data already in the DB
+        await syncDown(localUser).catch(err => console.log('Sync-down on login failed:', err));
+        
+        // 4. Re-read the local user in case syncDown updated their budget
+        const refreshedUser = getUserByEmail(localUser.email);
+        const finalUser = sanitizeUserData(refreshedUser || localUser);
+        await AsyncStorage.setItem(AUTH_KEY, JSON.stringify(finalUser));
+        
+        // 5. NOW set user state → Dashboard mounts → reads fresh SQLite data
+        setUser(finalUser);
+      }
+      
+      return data;
+    } finally {
+      loginInProgress.current = false;
+    }
   };
 
   const register = async (email, password, username) => {
@@ -118,6 +155,7 @@ export const AuthProvider = ({ children }) => {
     if (error) console.error('Signout error:', error);
     setUser(null);
     await AsyncStorage.removeItem(AUTH_KEY);
+    await AsyncStorage.removeItem(LAST_SYNC_KEY);
     setLoading(false);
   };
 
@@ -141,4 +179,3 @@ export const AuthProvider = ({ children }) => {
 };
 
 export const useAuth = () => useContext(AuthContext);
-
