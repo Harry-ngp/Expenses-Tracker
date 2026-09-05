@@ -1,12 +1,11 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, ScrollView, Dimensions, RefreshControl, LayoutAnimation, Platform, Animated as RNAnimated } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, ScrollView, Dimensions, RefreshControl, LayoutAnimation, Platform, Animated as RNAnimated, Modal, TouchableWithoutFeedback } from 'react-native';
 import Animated, { useSharedValue, useAnimatedStyle, withRepeat, withTiming, Easing, FadeInDown } from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { PieChart } from 'react-native-gifted-charts';
 import { useFocusEffect } from '@react-navigation/native';
-import DropDownPicker from 'react-native-dropdown-picker';
-import { Plus, Receipt } from 'lucide-react-native';
+import { Plus, Receipt, ChevronDown, Check } from 'lucide-react-native';
 
 import { FONTS } from '../constants/theme';
 import { useAuth } from '../context/AuthContext';
@@ -21,12 +20,12 @@ const BG_WHITE = '#FFFFFF';
 const TEXT_DARK = '#1C1C28';
 const TEXT_MUTED = '#8F92A1';
 
-// Generate last 12 months for the dropdown
+// Generate last 6 months for the dropdown
 const generateMonthOptions = () => {
   const options = [];
   const now = new Date();
   const MONTH_LABELS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-  for (let i = 0; i < 12; i++) {
+  for (let i = 0; i < 6; i++) {
     const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
     const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
     const label = `${MONTH_LABELS[d.getMonth()]} ${d.getFullYear()}`;
@@ -60,9 +59,56 @@ export default function DashboardScreen({ navigation }) {
     transform: [{ scale: fabScale.value }],
   }));
 
-  // Dropdown state
+  // Dropdown state & positioning
   const [monthDropOpen, setMonthDropOpen] = useState(false);
   const [monthItems, setMonthItems] = useState(generateMonthOptions());
+  const pillRef = useRef(null);
+  const [dropdownCoords, setDropdownCoords] = useState({ top: 140, right: 44, width: 130 });
+
+  const updateDropdownCoords = useCallback(() => {
+    if (pillRef.current) {
+      pillRef.current.measureInWindow((x, y, width, height) => {
+        if (width > 0 && height > 0) {
+          const windowWidth = Dimensions.get('window').width;
+          const calculatedRight = Math.max(windowWidth - (x + width), 16);
+          const calculatedTop = y + height + 4;
+          setDropdownCoords({
+            top: calculatedTop,
+            right: calculatedRight,
+            width: Math.max(width, 130),
+          });
+        }
+      });
+    }
+  }, []);
+
+  const onPillLayout = useCallback(() => {
+    updateDropdownCoords();
+  }, [updateDropdownCoords]);
+
+  const toggleDropdown = useCallback(() => {
+    if (monthDropOpen) {
+      setMonthDropOpen(false);
+      return;
+    }
+    if (pillRef.current) {
+      pillRef.current.measureInWindow((x, y, width, height) => {
+        if (width > 0 && height > 0) {
+          const windowWidth = Dimensions.get('window').width;
+          const calculatedRight = Math.max(windowWidth - (x + width), 16);
+          const calculatedTop = y + height + 4;
+          setDropdownCoords({
+            top: calculatedTop,
+            right: calculatedRight,
+            width: Math.max(width, 130),
+          });
+        }
+        setMonthDropOpen(true);
+      });
+    } else {
+      setMonthDropOpen(true);
+    }
+  }, [monthDropOpen]);
 
   // Progress Bar Animation
   const progressAnim = useRef(new RNAnimated.Value(0)).current;
@@ -115,8 +161,24 @@ export default function DashboardScreen({ navigation }) {
     }
   }, [user, selectedMonth]);
 
+  useEffect(() => {
+    loadData();
+  }, [selectedMonth, loadData]);
+
+  // Reset dropdown to current month when user switches away from Dashboard
+  useEffect(() => {
+    if (!navigation) return;
+    const unsubscribe = navigation.addListener('blur', () => {
+      const currentMonthKey = generateMonthOptions()[0].value;
+      setSelectedMonth(currentMonthKey);
+      setMonthDropOpen(false);
+    });
+    return unsubscribe;
+  }, [navigation]);
+
   useFocusEffect(
     useCallback(() => {
+      setMonthDropOpen(false);
       if (typeof requestIdleCallback !== 'undefined') {
         const id = requestIdleCallback(() => {
           loadData();
@@ -149,14 +211,17 @@ export default function DashboardScreen({ navigation }) {
   return (
     <View style={styles.safeArea}>
       <AnimatedBackground />
+
       <ScrollView
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
+        nestedScrollEnabled={true}
+        onScrollBeginDrag={() => setMonthDropOpen(false)}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
       >
 
         {/* 2. Total Expenses Card */}
-        <View style={{ marginHorizontal: 20, zIndex: 3000 }}>
+        <View style={{ marginHorizontal: 20 }}>
           <LinearGradient
             colors={[BRAND_PURPLE, '#8862F8']}
             start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}
@@ -165,28 +230,25 @@ export default function DashboardScreen({ navigation }) {
             <View style={styles.rowBetween}>
               <Text style={styles.totalCardLabel}>Total Expenses</Text>
 
-              {/* Dropdown for Month Selection */}
-              <View style={styles.dropdownContainerWrapper}>
-                <DropDownPicker
-                  open={monthDropOpen}
-                  value={selectedMonth}
-                  items={monthItems}
-                  setOpen={setMonthDropOpen}
-                  setValue={setSelectedMonth}
-                  setItems={setMonthItems}
-                  listMode="SCROLLVIEW,MODAL"
-                  style={styles.monthDropdown}
-                  dropDownContainerStyle={styles.monthDropdownList}
-                  textStyle={styles.monthDropdownText}
-                  listItemLabelStyle={{ color: TEXT_DARK }} // Fix invisible text
-                  arrowIconStyle={{ tintColor: '#fff', width: 15, height: 15 }}
-                  tickIconStyle={{ tintColor: BRAND_PURPLE }}
-                  placeholder="Select Month"
-                  modalProps={{ animationType: 'fade' }}
-                  modalTitle="Select Month"
-                />
+              {/* Month Pill Button */}
+              <View ref={pillRef} collapsable={false} onLayout={onPillLayout}>
+                <TouchableOpacity
+                  style={styles.monthPillButton}
+                  onPress={toggleDropdown}
+                  activeOpacity={0.75}
+                >
+                  <Text style={styles.monthPillText} numberOfLines={1}>
+                    {monthItems.find(m => m.value === selectedMonth)?.label || 'Month'}
+                  </Text>
+                  <ChevronDown
+                    stroke="#FFFFFF"
+                    size={14}
+                    style={{ transform: [{ rotate: monthDropOpen ? '180deg' : '0deg' }] }}
+                  />
+                </TouchableOpacity>
               </View>
             </View>
+
             <AnimatedNumber value={monthTotal} duration={1200} style={styles.totalCardAmount} />
             <Text style={styles.totalCardTrend}>Updated for {monthItems.find(m => m.value === selectedMonth)?.label}</Text>
           </LinearGradient>
@@ -289,6 +351,76 @@ export default function DashboardScreen({ navigation }) {
           </View>
         </View>
       </ScrollView>
+
+      {/* Month Dropdown Modal */}
+      <Modal
+        visible={monthDropOpen}
+        transparent={true}
+        animationType="none"
+        onRequestClose={() => setMonthDropOpen(false)}
+        statusBarTranslucent={true}
+      >
+        <TouchableWithoutFeedback onPress={() => setMonthDropOpen(false)}>
+          <View style={StyleSheet.absoluteFill} />
+        </TouchableWithoutFeedback>
+
+        <View
+          style={[
+            styles.monthDropdownMenu,
+            {
+              top: dropdownCoords.top,
+              right: dropdownCoords.right,
+              width: dropdownCoords.width,
+            },
+          ]}
+        >
+          <LinearGradient
+            colors={[BRAND_PURPLE, '#8862F8']}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={styles.monthDropdownGradient}
+          >
+            <ScrollView
+              showsVerticalScrollIndicator={false}
+              bounces={true}
+              overScrollMode="always"
+              keyboardShouldPersistTaps="handled"
+              style={{ flex: 1 }}
+              contentContainerStyle={{ paddingVertical: 2 }}
+            >
+              {monthItems.map((item, index) => {
+                const isSelected = item.value === selectedMonth;
+                return (
+                  <TouchableOpacity
+                    key={item.value}
+                    style={[
+                      styles.monthDropdownItem,
+                      isSelected && styles.monthDropdownItemSelected,
+                      index > 0 && styles.monthDropdownItemBorder,
+                    ]}
+                    onPress={() => {
+                      setSelectedMonth(item.value);
+                      setMonthDropOpen(false);
+                    }}
+                    activeOpacity={0.65}
+                  >
+                    <Text
+                      style={[
+                        styles.monthDropdownItemText,
+                        isSelected && styles.monthDropdownItemTextSelected,
+                      ]}
+                      numberOfLines={1}
+                    >
+                      {item.label}
+                    </Text>
+                    {isSelected && <Check stroke="#FFFFFF" size={13} />}
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+          </LinearGradient>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -324,28 +456,63 @@ const styles = StyleSheet.create({
   },
   totalCardLabel: { fontFamily: FONTS.medium, fontSize: 14, color: 'rgba(255,255,255,0.85)' },
 
-  dropdownContainerWrapper: {
-    width: 135, // slightly wider for longer month names
-  },
-  monthDropdown: {
-    backgroundColor: 'rgba(255,255,255,0.25)', // More visible
-    borderWidth: 0,
-    minHeight: 36, // Better touch target
-    borderRadius: 20,
+  monthPillButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: 'rgba(255,255,255,0.22)',
+    minHeight: 34,
+    borderRadius: 17,
     paddingHorizontal: 12,
+    minWidth: 124,
   },
-  monthDropdownList: {
-    backgroundColor: BG_WHITE,
-    borderWidth: 0,
-    borderRadius: 16,
-    ...softShadow,
-    marginTop: 4,
-    elevation: 5000, // Ensure it sits on top of everything
-  },
-  monthDropdownText: {
+  monthPillText: {
     fontFamily: FONTS.semiBold,
     fontSize: 13,
-    color: '#fff',
+    color: '#FFFFFF',
+    marginRight: 6,
+  },
+  monthDropdownMenu: {
+    position: 'absolute',
+    height: 104,
+    borderRadius: 14,
+    overflow: 'hidden',
+    zIndex: 9999,
+    elevation: 9999,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.35,
+    shadowRadius: 8,
+  },
+  monthDropdownGradient: {
+    flex: 1,
+    borderRadius: 14,
+    borderWidth: 1.5,
+    borderColor: 'rgba(255,255,255,0.4)',
+  },
+  monthDropdownItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    height: 32,
+    paddingHorizontal: 12,
+  },
+  monthDropdownItemSelected: {
+    backgroundColor: 'rgba(255,255,255,0.25)',
+  },
+  monthDropdownItemBorder: {
+    borderTopWidth: 0.5,
+    borderTopColor: 'rgba(255,255,255,0.18)',
+  },
+  monthDropdownItemText: {
+    fontFamily: FONTS.semiBold,
+    fontSize: 13,
+    color: 'rgba(255,255,255,0.9)',
+  },
+  monthDropdownItemTextSelected: {
+    fontFamily: FONTS.semiBold,
+    fontSize: 13,
+    color: '#FFFFFF',
   },
 
   totalCardAmount: { fontFamily: FONTS.bold, fontSize: 32, color: '#fff', marginTop: 16, marginBottom: 8 },
