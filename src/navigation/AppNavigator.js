@@ -3,7 +3,7 @@ import { NavigationContainer } from '@react-navigation/native';
 import { createStackNavigator } from '@react-navigation/stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { View, Text, TouchableOpacity, TouchableWithoutFeedback, StyleSheet, ActivityIndicator } from 'react-native';
-import { Home, List, PieChart, BarChart2, MoreHorizontal, AlignLeft, Bell, Plus } from 'lucide-react-native';
+import { Home, List, PieChart, BarChart2, MoreHorizontal, AlignLeft, Bell, Plus, Search } from 'lucide-react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Platform } from 'react-native';
@@ -71,9 +71,19 @@ const AnimatedHamburger = ({ onPress }) => {
   );
 };
 
-const AppHeader = ({ title }) => {
+const AppHeader = ({ title, route, navigation: navProp }) => {
   const navigation = useNavigation();
   const { unreadCount } = useNotifications();
+  const isTransactions = title === 'Transactions';
+  const searchOpen = route?.params?.searchOpen || false;
+
+  const handleRightPress = () => {
+    if (isTransactions) {
+      navigation.setParams({ searchOpen: !searchOpen });
+    } else {
+      navigation.navigate('Notifications');
+    }
+  };
   
   return (
     <SafeAreaView style={headerStyles.safe} edges={['top']}>
@@ -84,16 +94,25 @@ const AppHeader = ({ title }) => {
         {/* Center — page title */}
         <Text style={headerStyles.title}>{title}</Text>
 
-        {/* Right — bell */}
+        {/* Right — Search (Transactions) or Bell (others) */}
         <TouchableOpacity
-          style={headerStyles.iconBtn}
-          onPress={() => navigation.navigate('Notifications')}
+          style={[
+            headerStyles.iconBtn,
+            isTransactions && searchOpen && { backgroundColor: BRAND_PURPLE + '18' }
+          ]}
+          onPress={handleRightPress}
         >
-          <Bell stroke={TEXT_DARK} size={22} strokeWidth={2.5} />
-          {unreadCount > 0 && (
-            <View style={headerStyles.badge}>
-              <Text style={headerStyles.badgeText}>{unreadCount > 9 ? '9+' : unreadCount}</Text>
-            </View>
+          {isTransactions ? (
+            <Search stroke={searchOpen ? BRAND_PURPLE : TEXT_DARK} size={22} strokeWidth={2.5} />
+          ) : (
+            <>
+              <Bell stroke={TEXT_DARK} size={22} strokeWidth={2.5} />
+              {unreadCount > 0 && (
+                <View style={headerStyles.badge}>
+                  <Text style={headerStyles.badgeText}>{unreadCount > 9 ? '9+' : unreadCount}</Text>
+                </View>
+              )}
+            </>
           )}
         </TouchableOpacity>
       </View>
@@ -160,7 +179,7 @@ const MainTabs = () => {
     <Tab.Navigator
       screenOptions={({ route }) => ({
         // Render the shared header for every tab
-        header: () => <AppHeader title={route.name === 'More' ? 'More' : route.name} />,
+        header: () => <AppHeader title={route.name === 'More' ? 'More' : route.name} route={route} />,
         tabBarStyle: {
           backgroundColor: BG_WHITE,
           borderTopColor: BORDER,

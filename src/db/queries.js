@@ -84,7 +84,18 @@ export const getExpenses = ({ userId, categoryId, startDate, endDate, minAmount,
   if (endDate)    { query += ' AND substr(e.date, 1, 10) <= ?'; params.push(endDate); }
   if (minAmount != null) { query += ' AND e.amount >= ?'; params.push(minAmount); }
   if (maxAmount != null) { query += ' AND e.amount <= ?'; params.push(maxAmount); }
-  if (search)     { query += ' AND e.description LIKE ?'; params.push(`%${search}%`); }
+  if (search) {
+    const isNumeric = !isNaN(Number(search)) && search.trim() !== '';
+    if (isNumeric) {
+      query += ' AND (e.description LIKE ? OR c.name LIKE ? OR e.payment_method LIKE ? OR e.amount = ?)';
+      const searchParam = `%${search}%`;
+      params.push(searchParam, searchParam, searchParam, Number(search));
+    } else {
+      query += ' AND (e.description LIKE ? OR c.name LIKE ? OR e.payment_method LIKE ?)';
+      const searchParam = `%${search}%`;
+      params.push(searchParam, searchParam, searchParam);
+    }
+  }
 
   query += ' ORDER BY e.date DESC, e.created_at DESC;';
   return db.getAllSync(query, params);
