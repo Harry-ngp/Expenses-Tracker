@@ -18,7 +18,9 @@ import { initializeDatabase } from './src/db/schema';
 import { COLORS } from './src/constants/theme';
 
 LogBox.ignoreLogs([
+  'setLayoutAnimationEnabledExperimental is currently a no-op',
   'SafeAreaView has been deprecated',
+  'InteractionManager has been deprecated',
   'VirtualizedLists should never be nested',
 ]);
 

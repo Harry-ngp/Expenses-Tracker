@@ -1,5 +1,5 @@
 import React, { useState, useCallback } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, ScrollView, Dimensions, LayoutAnimation, Platform, UIManager } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, ScrollView, Dimensions, LayoutAnimation, Platform } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
 import { PieChart, LineChart } from 'react-native-gifted-charts';
@@ -37,10 +37,6 @@ function getMonthDisplay(key) {
 }
 
 const PIE_COLORS = ['#FF6B6B', '#FF8E53', '#F59E0B', '#10B981', '#4B5563', '#EF4444'];
-
-if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
-  UIManager.setLayoutAnimationEnabledExperimental(true);
-}
 
 export default function ReportsScreen({ navigation }) {
   const { user } = useAuth();

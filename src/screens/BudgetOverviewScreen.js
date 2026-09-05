@@ -1,5 +1,5 @@
 import React, { useState, useCallback, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TouchableWithoutFeedback, RefreshControl, Animated as RNAnimated, LayoutAnimation, Platform, UIManager, Image } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TouchableWithoutFeedback, RefreshControl, Animated as RNAnimated, LayoutAnimation, Platform, Image } from 'react-native';
 import Animated, { useSharedValue, useAnimatedStyle, withRepeat, withTiming, Easing, withSpring, interpolate } from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
@@ -37,10 +37,6 @@ function getMonthDisplay(key) {
   if (!key) return '';
   const [year, month] = key.split('-');
   return `${MONTH_LABELS[parseInt(month, 10) - 1]} ${year}`;
-}
-
-if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
-  UIManager.setLayoutAnimationEnabledExperimental(true);
 }
 
 export default function BudgetOverviewScreen() {

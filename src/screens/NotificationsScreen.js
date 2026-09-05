@@ -1,5 +1,5 @@
 import React, { useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, LayoutAnimation, Platform, UIManager } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, LayoutAnimation, Platform } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import { ArrowLeft, Bell, CheckCircle2, AlertTriangle, Info, Star } from 'lucide-react-native';
@@ -11,10 +11,6 @@ const BG_APP = '#F7F8FA';
 const TEXT_DARK = '#1C1C28';
 const TEXT_MUTED = '#8F92A1';
 const BRAND_PURPLE = '#FF6B6B'; // Sunset Horizon Primary
-
-if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
-  UIManager.setLayoutAnimationEnabledExperimental(true);
-}
 
 export default function NotificationsScreen() {
   const navigation = useNavigation();

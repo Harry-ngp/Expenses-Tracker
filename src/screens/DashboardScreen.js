@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, ScrollView, Dimensions, RefreshControl, LayoutAnimation, Platform, UIManager, Animated as RNAnimated, InteractionManager } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, ScrollView, Dimensions, RefreshControl, LayoutAnimation, Platform, Animated as RNAnimated } from 'react-native';
 import Animated, { useSharedValue, useAnimatedStyle, withRepeat, withTiming, Easing, FadeInDown } from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -34,10 +34,6 @@ const generateMonthOptions = () => {
   }
   return options;
 };
-
-if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
-  UIManager.setLayoutAnimationEnabledExperimental(true);
-}
 
 export default function DashboardScreen({ navigation }) {
   const { user } = useAuth();
@@ -121,10 +117,18 @@ export default function DashboardScreen({ navigation }) {
 
   useFocusEffect(
     useCallback(() => {
-      const task = InteractionManager.runAfterInteractions(() => {
-        loadData();
-      });
-      return () => task.cancel();
+      if (typeof requestIdleCallback !== 'undefined') {
+        const id = requestIdleCallback(() => {
+          loadData();
+        });
+        return () => {
+          if (typeof cancelIdleCallback !== 'undefined') {
+            cancelIdleCallback(id);
+          }
+        };
+      }
+      const timer = setTimeout(() => loadData(), 0);
+      return () => clearTimeout(timer);
     }, [loadData])
   );
 

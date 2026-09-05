@@ -1,7 +1,7 @@
 import React, { useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import {
   View, Text, SectionList, TouchableOpacity, StyleSheet,
-  RefreshControl, TextInput, LayoutAnimation, Platform, UIManager,
+  RefreshControl, TextInput, LayoutAnimation, Platform,
   Animated as RNAnimated, Easing as RNEasing, Modal, FlatList
 } from 'react-native';
 import Animated, { FadeInDown, useSharedValue, useAnimatedStyle, withRepeat, withTiming, Easing } from 'react-native-reanimated';
@@ -60,10 +60,6 @@ const PAY_ITEMS = [
   { label: 'Card',         value: 'Card',         rawIcon: '💳' },
   { label: 'Net Banking',  value: 'Net Banking',  rawIcon: '🏦' },
 ];
-
-if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
-  UIManager.setLayoutAnimationEnabledExperimental(true);
-}
 
 // ── Custom Bottom-Sheet Dropdown ──────────────────────────────────
 function Dropdown({ label, value, items, onChange, leftIcon, style }) {
