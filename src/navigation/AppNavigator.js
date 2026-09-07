@@ -14,7 +14,7 @@ import { useAuth } from '../context/AuthContext';
 import { useNotifications } from '../context/NotificationContext';
 import { FONTS } from '../constants/theme';
 import NetInfo from '@react-native-community/netinfo';
-import { syncUp, syncDown } from '../utils/syncManager';
+import { syncUp, syncDown, autoSync } from '../utils/syncManager';
 
 
 import LoginScreen           from '../screens/LoginScreen';
@@ -266,22 +266,23 @@ const AppNavigator = () => {
     // Auto-sync when network comes back online
     const unsubscribe = NetInfo.addEventListener(state => {
       if (state.isConnected) {
-        syncDown(user)
-          .then(() => syncUp(user))
-          .catch(err => console.log('Auto-sync failed:', err));
+        autoSync(user).catch(err => console.log('Auto-sync failed:', err));
       }
     });
     
-    // Initial sync on mount
-    NetInfo.fetch().then(state => {
-      if (state.isConnected) {
-        syncDown(user)
-          .then(() => syncUp(user))
-          .catch(err => console.log('Initial sync failed:', err));
-      }
-    });
+    // Initial sync on mount with a brief delay (2.5s) to allow Auth session and clock skew to stabilize
+    const timer = setTimeout(() => {
+      NetInfo.fetch().then(state => {
+        if (state.isConnected) {
+          autoSync(user).catch(err => console.log('Initial sync failed:', err));
+        }
+      });
+    }, 2500);
     
-    return () => unsubscribe();
+    return () => {
+      clearTimeout(timer);
+      unsubscribe();
+    };
   }, [user]);
 
   if (loading) {

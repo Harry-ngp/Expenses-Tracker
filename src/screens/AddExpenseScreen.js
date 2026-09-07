@@ -11,7 +11,7 @@ import { ArrowLeft, ChevronDown, Check, Calendar, FileText, Tag } from 'lucide-r
 import { FONTS } from '../constants/theme';
 import { useAuth } from '../context/AuthContext';
 import { useNotifications } from '../context/NotificationContext';
-import { addExpense, updateExpense, getCategoriesForUser, getMonthlyTotal } from '../db/queries';
+import { addExpense, updateExpense, getCategoriesForUser, getMonthlyTotal, getMonthlyBudget } from '../db/queries';
 import { formatINR } from '../utils/dateHelpers';
 import { syncUp } from '../utils/syncManager';
 import Svg, { Path, Circle } from 'react-native-svg';
@@ -327,12 +327,13 @@ export default function AddExpenseScreen({ navigation, route }) {
         updateExpense({ id: editing.id, ...payload });
       } else {
         addExpense(payload);
-        const mk    = date.substring(0, 7);
+        const mk = date.substring(0, 7);
         const total = getMonthlyTotal(user.id, mk);
-        if (user.monthly_budget > 0) {
-          if (total > user.monthly_budget)
-            addNotification({ title: 'Budget Exceeded! ⚠️', message: `Spent ${formatINR(total)}, exceeding your budget.`, type: 'warning', time: new Date().toISOString() });
-          else if (total > user.monthly_budget * 0.9)
+        const mBudget = getMonthlyBudget(user.id, mk);
+        if (mBudget > 0) {
+          if (total > mBudget)
+            addNotification({ title: 'Budget Exceeded! ⚠️', message: `Spent ${formatINR(total)}, exceeding your budget of ${formatINR(mBudget)}.`, type: 'warning', time: new Date().toISOString() });
+          else if (total > mBudget * 0.9)
             addNotification({ title: 'Nearing Budget ⚠️', message: 'Over 90% of monthly budget used.', type: 'warning', time: new Date().toISOString() });
         }
       }

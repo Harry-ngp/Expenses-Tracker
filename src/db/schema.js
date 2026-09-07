@@ -30,9 +30,16 @@ export const initializeDatabase = () => {
       username      TEXT    NOT NULL,
       password_hash TEXT    NOT NULL,
       monthly_budget REAL   DEFAULT 0,
+      monthly_budgets_json TEXT DEFAULT '{}',
       created_at    TEXT    DEFAULT (datetime('now'))
     );
   `);
+
+  try {
+    db.execSync("ALTER TABLE users ADD COLUMN monthly_budgets_json TEXT DEFAULT '{}';");
+  } catch (e) {
+    // Column might already exist
+  }
 
   // ── categories table ─────────────────────────────────────────
   db.execSync(`

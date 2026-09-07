@@ -265,7 +265,118 @@ export const deleteCategory = (categoryId) => {
   db.runSync('DELETE FROM categories WHERE id = ?;', [categoryId]);
 };
 
-export const setCategoryBudget = (userId, categoryId, budget) => {
+// ═══════════════════════════════════════════════════════════════
+//  MONTH-WISE BUDGET & CATEGORY LIMIT QUERIES (JSON-BACKED)
+// ═══════════════════════════════════════════════════════════════
+
+export const getMonthlyBudgetsJson = (userId) => {
+  if (!userId) return {};
+  const db = getDb();
+  try {
+    const row = db.getFirstSync('SELECT monthly_budgets_json FROM users WHERE id = ?;', [userId]);
+    if (row && row.monthly_budgets_json) {
+      const parsed = JSON.parse(row.monthly_budgets_json);
+      if (typeof parsed === 'object' && parsed !== null) {
+        return parsed;
+      }
+    }
+  } catch (err) {
+    console.error('getMonthlyBudgetsJson parse error:', err);
+  }
+  return {};
+};
+
+export const saveMonthlyBudgetsJson = (userId, budgetsMap) => {
+  if (!userId) return;
+  const db = getDb();
+  const jsonStr = JSON.stringify(budgetsMap || {});
+  db.runSync('UPDATE users SET monthly_budgets_json = ? WHERE id = ?;', [jsonStr, userId]);
+};
+
+export const getMonthlyBudget = (userId, month) => {
+  if (!userId || !month) return 0;
+  const budgets = getMonthlyBudgetsJson(userId);
+  if (budgets[month] && budgets[month].overall != null) {
+    return Number(budgets[month].overall) || 0;
+  }
+  return 0;
+};
+
+export const setMonthlyBudget = (userId, month, budget) => {
+  if (!userId || !month) return;
+  const budgets = getMonthlyBudgetsJson(userId);
+  if (!budgets[month]) {
+    budgets[month] = { overall: 0, categories: {} };
+  }
+  budgets[month].overall = Number(budget) || 0;
+  saveMonthlyBudgetsJson(userId, budgets);
+
+  // Keep users.monthly_budget in sync if setting current month
+  if (month === currentMonthKey()) {
+    updateMonthlyBudget(userId, Number(budget) || 0);
+  }
+};
+
+export const deleteMonthlyBudget = (userId, month) => {
+  if (!userId || !month) return;
+  const budgets = getMonthlyBudgetsJson(userId);
+  if (budgets[month]) {
+    budgets[month].overall = 0;
+    saveMonthlyBudgetsJson(userId, budgets);
+  }
+};
+
+export const getCategoryBudgets = (userId, month) => {
+  if (!userId) return [];
+  const db = getDb();
+  const allCats = getCategoriesForUser(userId);
+
+  if (month) {
+    const budgetsMap = getMonthlyBudgetsJson(userId);
+    const monthCatLimits = budgetsMap[month]?.categories || {};
+
+    return allCats
+      .filter(c => monthCatLimits[c.id] != null && Number(monthCatLimits[c.id]) > 0)
+      .map(c => ({
+        category_id: c.id,
+        budget: Number(monthCatLimits[c.id]),
+        name: c.name,
+        icon: c.icon,
+        color: c.color,
+      }));
+  }
+
+  // Fallback if no month passed (legacy)
+  return db.getAllSync(
+    `SELECT cb.*, c.name, c.icon, c.color 
+     FROM category_budgets cb
+     JOIN categories c ON cb.category_id = c.id
+     WHERE cb.user_id = ?;`,
+    [userId]
+  );
+};
+
+export const setCategoryBudget = (userId, categoryId, budget, month) => {
+  if (!userId || !categoryId) return;
+  if (month) {
+    const budgets = getMonthlyBudgetsJson(userId);
+    if (!budgets[month]) {
+      budgets[month] = { overall: 0, categories: {} };
+    }
+    if (!budgets[month].categories) {
+      budgets[month].categories = {};
+    }
+    const val = Number(budget);
+    if (val > 0) {
+      budgets[month].categories[categoryId] = val;
+    } else {
+      delete budgets[month].categories[categoryId];
+    }
+    saveMonthlyBudgetsJson(userId, budgets);
+    return;
+  }
+
+  // Legacy fallback
   const db = getDb();
   db.runSync(
     `INSERT INTO category_budgets (user_id, category_id, budget)
@@ -275,18 +386,18 @@ export const setCategoryBudget = (userId, categoryId, budget) => {
   );
 };
 
-export const deleteCategoryBudget = (userId, categoryId) => {
+export const deleteCategoryBudget = (userId, categoryId, month) => {
+  if (!userId || !categoryId) return;
+  if (month) {
+    const budgets = getMonthlyBudgetsJson(userId);
+    if (budgets[month]?.categories && budgets[month].categories[categoryId]) {
+      delete budgets[month].categories[categoryId];
+      saveMonthlyBudgetsJson(userId, budgets);
+    }
+    return;
+  }
+
+  // Legacy fallback
   const db = getDb();
   db.runSync('DELETE FROM category_budgets WHERE user_id = ? AND category_id = ?;', [userId, categoryId]);
-};
-
-export const getCategoryBudgets = (userId) => {
-  const db = getDb();
-  return db.getAllSync(
-    `SELECT cb.*, c.name, c.icon, c.color 
-     FROM category_budgets cb
-     JOIN categories c ON cb.category_id = c.id
-     WHERE cb.user_id = ?;`,
-    [userId]
-  );
 };

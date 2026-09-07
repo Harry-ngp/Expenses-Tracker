@@ -9,11 +9,12 @@ import { Plus, Receipt, ChevronDown, Check } from 'lucide-react-native';
 
 import { FONTS } from '../constants/theme';
 import { useAuth } from '../context/AuthContext';
-import { getExpenses, getMonthlyTotal, getCategoryTotals } from '../db/queries';
+import { getExpenses, getMonthlyTotal, getCategoryTotals, getMonthlyBudget } from '../db/queries';
 import ExpenseCard from '../components/ExpenseCard';
 import AnimatedBackground from '../components/AnimatedBackground';
 import AnimatedNumber from '../components/AnimatedNumber';
 import SkeletonLoader from '../components/SkeletonLoader';
+import { syncUp } from '../utils/syncManager';
 
 const BRAND_PURPLE = '#FF6B6B'; // Sunset Horizon Primary
 const BG_WHITE = '#FFFFFF';
@@ -40,6 +41,7 @@ export default function DashboardScreen({ navigation }) {
   // Data state
   const [selectedMonth, setSelectedMonth] = useState(generateMonthOptions()[0].value);
   const [monthTotal, setMonthTotal] = useState(0);
+  const [monthBudget, setMonthBudget] = useState(0);
   const [recentExpenses, setRecentExpenses] = useState([]);
   const [pieData, setPieData] = useState([]);
   const [refreshing, setRefreshing] = useState(false);
@@ -145,10 +147,11 @@ export default function DashboardScreen({ navigation }) {
       setPieData(formattedPie);
 
       // 4. Animate progress bar (budget logic)
-      const budget = user?.monthly_budget || 0;
-      const actualPct = budget > 0 ? Math.round((total / budget) * 100) : 0;
+      const b = getMonthlyBudget(user.id, selectedMonth);
+      setMonthBudget(b);
+      const actualPct = b > 0 ? Math.round((total / b) * 100) : 0;
 
-      if (budget > 0) {
+      if (b > 0) {
         RNAnimated.timing(progressAnim, {
           toValue: Math.min(actualPct, 100),
           duration: 1500,
@@ -194,14 +197,19 @@ export default function DashboardScreen({ navigation }) {
     }, [loadData])
   );
 
-  const onRefresh = () => {
+  const onRefresh = async () => {
     setRefreshing(true);
-    loadData();
-    setRefreshing(false);
+    try {
+      if (user) await syncUp(user);
+    } catch (e) {
+      console.log('Refresh sync error:', e);
+    } finally {
+      loadData();
+      setRefreshing(false);
+    }
   };
 
-  const budget = user?.monthly_budget || 0;
-  const actualPct = budget > 0 ? Math.round((monthTotal / budget) * 100) : 0;
+  const actualPct = monthBudget > 0 ? Math.round((monthTotal / monthBudget) * 100) : 0;
 
   // Progress bar color
   let progressColor = '#10B981'; // Green
@@ -255,15 +263,15 @@ export default function DashboardScreen({ navigation }) {
         </View>
 
         {/* 3. Monthly Budget Card (Only show if budget > 0) */}
-        {budget > 0 && (
+        {monthBudget > 0 && (
           <View style={styles.budgetCard}>
             <View style={[styles.rowBetween, { marginBottom: 12 }]}>
               <Text style={styles.budgetLabel}>Monthly Budget</Text>
-              <Text style={styles.budgetSubLabel}>of ₹ {budget.toLocaleString('en-IN')}.00</Text>
+              <Text style={styles.budgetSubLabel}>of ₹ {monthBudget.toLocaleString('en-IN')}.00</Text>
             </View>
 
             <View style={[styles.rowBetween, { marginBottom: 8, alignItems: 'flex-end' }]}>
-              <Text style={styles.budgetAmount}>₹ {budget.toLocaleString('en-IN')}.00</Text>
+              <Text style={styles.budgetAmount}>₹ {monthBudget.toLocaleString('en-IN')}.00</Text>
               <Text style={styles.budgetPercent}>{actualPct}%</Text>
             </View>
 

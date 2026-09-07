@@ -8,8 +8,9 @@ import { Settings2, ChevronDown, Plus, PiggyBank } from 'lucide-react-native';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
 import { FONTS, SPACING, RADIUS, SHADOWS } from '../constants/theme';
-import { getCategoryBudgets, getCategoryTotals, getCategoriesForUser, getMonthlyTotal } from '../db/queries';
+import { getCategoryBudgets, getCategoryTotals, getCategoriesForUser, getMonthlyTotal, getMonthlyBudget } from '../db/queries';
 import { formatINR, currentMonthStart, todayISO, currentMonthKey } from '../utils/dateHelpers';
+import { syncUp } from '../utils/syncManager';
 import DropDownPicker from 'react-native-dropdown-picker';
 import { LinearGradient } from 'expo-linear-gradient';
 import AnimatedBackground from '../components/AnimatedBackground';
@@ -24,8 +25,9 @@ const MONTH_LABELS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'S
 function generateMonthOptions() {
   const options = [];
   const now = new Date();
-  for (let i = 0; i < 12; i++) {
-    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+  // 6 months in the past to 6 months in the future
+  for (let i = -6; i <= 6; i++) {
+    const d = new Date(now.getFullYear(), now.getMonth() + i, 1);
     const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
     const label = `${MONTH_LABELS[d.getMonth()]} ${d.getFullYear()}`;
     options.push({ label, value: key });
@@ -47,8 +49,10 @@ export default function BudgetOverviewScreen() {
   const [categories, setCategories] = useState([]);
   const [categoryTotals, setCategoryTotals] = useState({});
   const [monthTotal, setMonthTotal] = useState(0);
+  const [overallBudget, setOverallBudget] = useState(0);
   const [refreshing, setRefreshing] = useState(false);
-  const [selectedMonth, setSelectedMonth] = useState(generateMonthOptions()[0].value);
+  const [selectedMonth, setSelectedMonth] = useState(currentMonthKey());
+  const [cardHeight, setCardHeight] = useState(210);
   
   const [monthDropOpen, setMonthDropOpen] = useState(false);
   const [monthItems, setMonthItems] = useState(generateMonthOptions());
@@ -58,12 +62,15 @@ export default function BudgetOverviewScreen() {
     const total = getMonthlyTotal(user.id, selectedMonth);
     setMonthTotal(total);
 
+    const b = getMonthlyBudget(user.id, selectedMonth);
+    setOverallBudget(b);
+
     const [year, month] = selectedMonth.split('-');
     const startDate = `${year}-${month}-01`;
     const endDate = `${year}-${month}-31`;
 
     const allCats = getCategoriesForUser(user.id);
-    const budgets = getCategoryBudgets(user.id);
+    const budgets = getCategoryBudgets(user.id, selectedMonth);
     const totals = getCategoryTotals(user.id, startDate, endDate);
 
     const totalsMap = {};
@@ -71,8 +78,8 @@ export default function BudgetOverviewScreen() {
     setCategoryTotals(totalsMap);
 
     const merged = allCats.map(c => {
-      const b = budgets.find(bdg => bdg.category_id === c.id);
-      return { ...c, budget: b ? b.budget : 0 };
+      const bdg = budgets.find(bItem => bItem.category_id === c.id);
+      return { ...c, budget: bdg ? bdg.budget : 0 };
     });
 
     const relevant = merged.filter(c => c.budget > 0 || totalsMap[c.id] > 0);
@@ -102,7 +109,6 @@ export default function BudgetOverviewScreen() {
     isFlipped.value = 0;
   }, [loadData, isFlipped]));
 
-  const overallBudget = user?.monthly_budget || 0;
   const isExceeded = overallBudget > 0 && monthTotal > overallBudget;
   const overAmount = isExceeded ? monthTotal - overallBudget : 0;
   const pct = overallBudget > 0 ? Math.min(Math.round((monthTotal / overallBudget) * 100), 100) : 0;
@@ -115,17 +121,21 @@ export default function BudgetOverviewScreen() {
   const remaining = Math.max(overallBudget - monthTotal, 0);
 
   // Daily allowance calculation
-  const [year, month] = selectedMonth.split('-');
-  const daysInMonth = new Date(year, month, 0).getDate();
+  const [yearStr, monthStr] = selectedMonth.split('-');
+  const y = parseInt(yearStr, 10);
+  const m = parseInt(monthStr, 10);
+  const daysInMonth = new Date(y, m, 0).getDate();
   const today = new Date();
   let daysPassed = 0;
-  if (today.getFullYear() == year && (today.getMonth() + 1) == month) {
+  if (today.getFullYear() === y && (today.getMonth() + 1) === m) {
     daysPassed = today.getDate();
-  } else if (new Date(year, month - 1) < today) {
+  } else if (new Date(y, m - 1, daysInMonth) < today) {
     daysPassed = daysInMonth; // past month
+  } else {
+    daysPassed = 0; // future month
   }
   const daysLeft = Math.max(daysInMonth - daysPassed, 1);
-  const dailyAllowance = Math.floor(remaining / daysLeft);
+  const dailyAllowance = Math.floor(remaining / daysLeft) || 0;
 
   const handleFlip = () => {
     isFlipped.value = withSpring(isFlipped.value === 0 ? 1 : 0, { damping: 15, stiffness: 120 });
@@ -133,17 +143,35 @@ export default function BudgetOverviewScreen() {
 
   const frontAnimatedStyle = useAnimatedStyle(() => {
     const rotateVal = interpolate(isFlipped.value, [0, 1], [0, 180]);
+    const opacity = interpolate(isFlipped.value, [0, 0.49, 0.5, 1], [1, 1, 0, 0]);
     return {
       transform: [{ perspective: 1000 }, { rotateY: `${rotateVal}deg` }],
+      opacity,
+      zIndex: isFlipped.value < 0.5 ? 10 : 0,
     };
   });
 
   const backAnimatedStyle = useAnimatedStyle(() => {
-    const rotateVal = interpolate(isFlipped.value, [0, 1], [180, 360]);
+    const rotateVal = interpolate(isFlipped.value, [0, 1], [-180, 0]);
+    const opacity = interpolate(isFlipped.value, [0, 0.49, 0.5, 1], [0, 0, 1, 1]);
     return {
       transform: [{ perspective: 1000 }, { rotateY: `${rotateVal}deg` }],
+      opacity,
+      zIndex: isFlipped.value >= 0.5 ? 10 : 0,
     };
   });
+
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    try {
+      if (user) await syncUp(user);
+    } catch (e) {
+      console.log('Refresh sync error:', e);
+    } finally {
+      loadData();
+      setRefreshing(false);
+    }
+  }, [user, loadData]);
 
   return (
     <View style={styles.safeArea}>
@@ -151,7 +179,7 @@ export default function BudgetOverviewScreen() {
 
       <ScrollView
         contentContainerStyle={styles.content}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); loadData(); setRefreshing(false); }} tintColor={BRAND_PURPLE} />}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={BRAND_PURPLE} />}
         showsVerticalScrollIndicator={false}
       >
 
@@ -169,14 +197,22 @@ export default function BudgetOverviewScreen() {
 
         {/* Monthly Budget Card (Flippable) */}
         {overallBudget > 0 ? (
-          <View style={{ zIndex: 1000 }}>
+          <View style={{ minHeight: cardHeight, marginBottom: 24, zIndex: 1000 }}>
             {/* Front of Card */}
-            <Animated.View style={[styles.budgetCard, frontAnimatedStyle, { backfaceVisibility: 'hidden' }]}>
+            <Animated.View 
+              onLayout={(e) => {
+                const h = e.nativeEvent.layout.height;
+                if (h > 60 && Math.abs(h - cardHeight) > 2) {
+                  setCardHeight(h);
+                }
+              }}
+              style={[styles.budgetCard, frontAnimatedStyle, { marginBottom: 0 }]}
+            >
               <View style={styles.budgetRow}>
-                <View>
-                  <Text style={styles.budgetLabel}>Monthly Budget</Text>
+                <TouchableOpacity onPress={() => navigation.navigate('BudgetSettings', { selectedMonth })} activeOpacity={0.75}>
+                  <Text style={styles.budgetLabel}>Monthly Budget ✏️</Text>
                   <Text style={styles.budgetOfLabel}>of {formatINR(overallBudget)}</Text>
-                </View>
+                </TouchableOpacity>
                 <View style={styles.dropdownContainerWrapper}>
                   <DropDownPicker
                     open={monthDropOpen}
@@ -220,23 +256,49 @@ export default function BudgetOverviewScreen() {
             </Animated.View>
 
             {/* Back of Card */}
-            <Animated.View style={[styles.budgetCard, backAnimatedStyle, { backfaceVisibility: 'hidden', position: 'absolute', top: 0, left: 0, right: 0, bottom: 24, overflow: 'hidden', padding: 0 }]}>
+            <Animated.View
+              style={[
+                styles.budgetCard,
+                backAnimatedStyle,
+                {
+                  position: 'absolute',
+                  top: 0,
+                  left: 0,
+                  right: 0,
+                  bottom: 0,
+                  marginBottom: 0,
+                  padding: 0,
+                  borderRadius: RADIUS.xl,
+                  overflow: 'hidden',
+                },
+              ]}
+            >
               <TouchableWithoutFeedback onPress={handleFlip}>
-                <View style={{ flex: 1, padding: 24, justifyContent: 'center' }}>
+                <View style={{ flex: 1, padding: 24, justifyContent: 'center', alignItems: 'center' }}>
                   <LinearGradient
                     colors={['#FF6B6B', '#8862F8']}
                     start={{ x: 0, y: 0 }}
                     end={{ x: 1, y: 1 }}
-                    style={StyleSheet.absoluteFillObject}
+                    style={[StyleSheet.absoluteFillObject, { borderRadius: RADIUS.xl }]}
                   />
 
-                  <View style={{ zIndex: 2, alignItems: 'center' }}>
-                    <Text style={{ fontFamily: FONTS.semiBold, fontSize: 14, color: 'rgba(255,255,255,0.8)', marginBottom: 8, textTransform: 'uppercase', letterSpacing: 1 }}>Daily Allowance</Text>
-                    <Text style={{ fontFamily: FONTS.bold, fontSize: 36, color: '#FFF' }}>{formatINR(dailyAllowance)}</Text>
+                  <View style={{ zIndex: 2, alignItems: 'center', justifyContent: 'center' }}>
+                    <Text style={{ fontFamily: FONTS.semiBold, fontSize: 13, color: 'rgba(255,255,255,0.85)', marginBottom: 8, textTransform: 'uppercase', letterSpacing: 1 }}>
+                      Daily Allowance
+                    </Text>
+                    <Text style={{ fontFamily: FONTS.bold, fontSize: 36, color: '#FFFFFF', marginBottom: 4 }}>
+                      {formatINR(dailyAllowance)}
+                    </Text>
                     
-                    <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 16, backgroundColor: 'rgba(255,255,255,0.15)', paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20 }}>
-                      <Text style={{ fontFamily: FONTS.medium, fontSize: 13, color: '#FFF' }}>{daysLeft} {daysLeft === 1 ? 'day' : 'days'} remaining</Text>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 12, backgroundColor: 'rgba(255,255,255,0.2)', paddingHorizontal: 16, paddingVertical: 6, borderRadius: 20 }}>
+                      <Text style={{ fontFamily: FONTS.medium, fontSize: 13, color: '#FFFFFF' }}>
+                        {daysLeft} {daysLeft === 1 ? 'day' : 'days'} remaining
+                      </Text>
                     </View>
+
+                    <Text style={{ fontFamily: FONTS.medium, fontSize: 11, color: 'rgba(255,255,255,0.75)', marginTop: 12 }}>
+                      Tap to flip back ↺
+                    </Text>
                   </View>
                 </View>
               </TouchableWithoutFeedback>
@@ -264,7 +326,7 @@ export default function BudgetOverviewScreen() {
             </View>
             <TouchableOpacity 
               style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, width: '100%', paddingVertical: 14, backgroundColor: BRAND_PURPLE + '12', borderRadius: RADIUS.full }} 
-              onPress={() => navigation.navigate('BudgetSettings')}
+              onPress={() => navigation.navigate('BudgetSettings', { selectedMonth })}
             >
               <Plus stroke={BRAND_PURPLE} size={22} />
               <Text style={styles.setBudgetText}>Set a Monthly Budget</Text>
@@ -331,7 +393,7 @@ export default function BudgetOverviewScreen() {
       {/* Floating Action Button */}
       <Animated.View style={[styles.fab, animatedFabStyle]}>
         <LinearGradient colors={['#FF6B6B', '#FF8E53']} style={StyleSheet.absoluteFill} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}>
-          <TouchableOpacity style={[{flex:1, alignItems:'center', justifyContent:'center'}]} onPress={() => navigation.navigate('BudgetSettings')}>
+          <TouchableOpacity style={[{flex:1, alignItems:'center', justifyContent:'center'}]} onPress={() => navigation.navigate('BudgetSettings', { selectedMonth })}>
             <Settings2 stroke="#FFF" size={24} />
           </TouchableOpacity>
         </LinearGradient>
@@ -387,6 +449,13 @@ const styles = StyleSheet.create({
   budgetFooter: { flexDirection: 'row', justifyContent: 'space-between', zIndex: -1 },
   budgetRemaining: { fontFamily: FONTS.medium, fontSize: FONTS.sizes.sm, color: TEXT_MUTED },
   budgetPct: { fontFamily: FONTS.bold, fontSize: FONTS.sizes.sm },
+  tapToFlipText: {
+    fontFamily: FONTS.medium,
+    fontSize: 12,
+    color: TEXT_MUTED,
+    textAlign: 'center',
+    marginTop: 10,
+  },
 
   dropdownContainerWrapper: { width: 130, zIndex: 5000 },
   dropdown: { minHeight: 38, backgroundColor: '#F9FAFB', borderColor: '#E8EAF0', borderRadius: RADIUS.full, paddingHorizontal: 12 },

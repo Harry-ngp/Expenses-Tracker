@@ -12,6 +12,7 @@ import DateTimePicker from '@react-native-community/datetimepicker';
 import { FONTS, RADIUS, SHADOWS } from '../constants/theme';
 import { useAuth } from '../context/AuthContext';
 import { getExpenses, deleteExpense, getCategoriesForUser } from '../db/queries';
+import { syncUp } from '../utils/syncManager';
 import ExpenseCard from '../components/ExpenseCard';
 import AnimatedBackground from '../components/AnimatedBackground';
 
@@ -257,8 +258,22 @@ export default function TransactionsListScreen({ navigation, route }) {
     setStartDate(s); setEndDate(e);
   };
 
-  const onRefresh = () => { setRefreshing(true); loadData(); setRefreshing(false); };
-  const handleDelete = (id) => { deleteExpense(id); loadData(); };
+  const onRefresh = async () => {
+    setRefreshing(true);
+    try {
+      if (user) await syncUp(user);
+    } catch (e) {
+      console.log('Refresh sync error:', e);
+    } finally {
+      loadData();
+      setRefreshing(false);
+    }
+  };
+  const handleDelete = (id) => {
+    deleteExpense(id);
+    loadData();
+    if (user) syncUp(user).catch(err => console.log('Delete sync error:', err));
+  };
   const handleEdit   = (expense) => navigation.navigate('AddExpense', { expense });
 
   const selCat = catItems.find(c => c.value === categoryId);

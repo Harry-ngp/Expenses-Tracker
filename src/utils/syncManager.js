@@ -1,9 +1,41 @@
 import { supabase } from '../config/supabase';
 import NetInfo from '@react-native-community/netinfo';
 import { getDb } from '../db/schema';
+import { getMonthlyBudgetsJson, saveMonthlyBudgetsJson } from '../db/queries';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const LAST_SYNC_KEY = '@expenses_last_sync_at';
+const PENDING_SYNC_KEY = '@expenses_pending_sync';
+
+// Clock skew retry helper for PostgREST PGRST303 ("JWT issued at future")
+const executeWithClockSkewRetry = async (queryFn, maxRetries = 2, delayMs = 2000) => {
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      const res = await queryFn();
+      if (res && res.error) {
+        const isClockSkew =
+          res.error.code === 'PGRST303' ||
+          (res.error.message && res.error.message.toLowerCase().includes('future'));
+        if (isClockSkew && attempt < maxRetries) {
+          console.warn(`[Sync] Clock skew detected (${res.error.code || 'JWT issued at future'}). Retrying in ${delayMs / 1000}s... (Attempt ${attempt + 1}/${maxRetries})`);
+          await new Promise(resolve => setTimeout(resolve, delayMs));
+          continue;
+        }
+      }
+      return res;
+    } catch (err) {
+      const isClockSkew =
+        err?.code === 'PGRST303' ||
+        (err?.message && err.message.toLowerCase().includes('future'));
+      if (isClockSkew && attempt < maxRetries) {
+        console.warn(`[Sync] Clock skew exception (${err?.code || 'JWT issued at future'}). Retrying in ${delayMs / 1000}s... (Attempt ${attempt + 1}/${maxRetries})`);
+        await new Promise(resolve => setTimeout(resolve, delayMs));
+        continue;
+      }
+      throw err;
+    }
+  }
+};
 
 export const getExportPayload = (user) => {
   if (!user || !user.id) return null;
@@ -22,22 +54,18 @@ export const getExportPayload = (user) => {
     [user.id]
   );
   
-  const categoryBudgets = db.getAllSync(
-    `SELECT category_id, budget FROM category_budgets WHERE user_id = ?;`,
-    [user.id]
-  );
+  const monthlyBudgets = getMonthlyBudgetsJson(user.id);
   
   return {
     app: 'ExpenseIQ',
-    version: '1.0',
+    version: '2.0',
     exportedAt: new Date().toISOString(),
     user: {
       username: user.username,
       email: user.email,
-      monthly_budget: user.monthly_budget,
     },
+    monthlyBudgets,
     categories,
-    categoryBudgets,
     expenses,
   };
 };
@@ -46,7 +74,10 @@ export const syncUp = async (user) => {
   if (!user || !user.email) return { success: false, message: 'No user session' };
   
   const state = await NetInfo.fetch();
-  if (!state.isConnected) return { success: false, message: 'Offline' };
+  if (!state.isConnected) {
+    await AsyncStorage.setItem(PENDING_SYNC_KEY, 'true');
+    return { success: false, message: 'Offline' };
+  }
   
   try {
     const { data: { session } } = await supabase.auth.getSession();
@@ -54,19 +85,26 @@ export const syncUp = async (user) => {
     
     const payload = getExportPayload(user);
     if (!payload) return { success: false, message: 'Failed to generate payload' };
+
+    const db = getDb();
+    const userRow = db.getFirstSync('SELECT monthly_budget FROM users WHERE id = ?;', [user.id]);
+    const currentMonthlyBudget = userRow?.monthly_budget ?? user.monthly_budget ?? 0;
     
-    const { error } = await supabase.from('user_sync_data').upsert({
-      user_id: session.user.id,
-      email: session.user.email,
-      username: user.username,
-      monthly_budget: user.monthly_budget || 0,
-      data_json: payload,
-      last_synced_at: new Date().toISOString()
-    }, { onConflict: 'user_id' });
+    const { error } = await executeWithClockSkewRetry(async () => {
+      return await supabase.from('user_sync_data').upsert({
+        user_id: session.user.id,
+        email: session.user.email,
+        username: user.username,
+        monthly_budget: currentMonthlyBudget,
+        data_json: payload,
+        last_synced_at: new Date().toISOString()
+      }, { onConflict: 'user_id' });
+    });
     
     if (error) throw error;
     
     await AsyncStorage.setItem(LAST_SYNC_KEY, new Date().toISOString());
+    await AsyncStorage.setItem(PENDING_SYNC_KEY, 'false');
     return { success: true };
   } catch (err) {
     console.error('Sync Up Error:', err);
@@ -84,11 +122,13 @@ export const syncDown = async (user) => {
     const { data: { session } } = await supabase.auth.getSession();
     if (!session?.user) return { success: false, message: 'Not authenticated with cloud' };
     
-    const { data, error } = await supabase
-      .from('user_sync_data')
-      .select('data_json, last_synced_at')
-      .eq('user_id', session.user.id)
-      .single();
+    const { data, error } = await executeWithClockSkewRetry(async () => {
+      return await supabase
+        .from('user_sync_data')
+        .select('data_json, last_synced_at')
+        .eq('user_id', session.user.id)
+        .single();
+    });
       
     if (error && error.code !== 'PGRST116') throw error; // PGRST116 is not found
     if (!data || !data.data_json) return { success: true, message: 'No cloud data to sync' };
@@ -110,7 +150,10 @@ export const syncDown = async (user) => {
       db.runSync('DELETE FROM category_budgets WHERE user_id = ?', [user.id]);
       db.runSync('DELETE FROM categories WHERE user_id = ?', [user.id]);
       
-      if (backupData.user && backupData.user.monthly_budget) {
+      // Restore month-wise budgets
+      if (backupData.monthlyBudgets && typeof backupData.monthlyBudgets === 'object') {
+        saveMonthlyBudgetsJson(user.id, backupData.monthlyBudgets);
+      } else if (backupData.user && backupData.user.monthly_budget) {
         db.runSync('UPDATE users SET monthly_budget = ? WHERE id = ?;', [backupData.user.monthly_budget, user.id]);
       }
       
@@ -119,15 +162,6 @@ export const syncDown = async (user) => {
           db.runSync(
             'INSERT OR IGNORE INTO categories (id, user_id, name, icon, color) VALUES (?, ?, ?, ?, ?)',
             [cat.id, cat.user_id || user.id, cat.name, cat.icon, cat.color]
-          );
-        }
-      }
-      
-      if (Array.isArray(backupData.categoryBudgets)) {
-        for (const cb of backupData.categoryBudgets) {
-          db.runSync(
-            'INSERT OR REPLACE INTO category_budgets (user_id, category_id, budget) VALUES (?, ?, ?)',
-            [user.id, cb.category_id, cb.budget]
           );
         }
       }
@@ -157,6 +191,35 @@ export const syncDown = async (user) => {
     return { success: true, imported: backupData.expenses.length };
   } catch (err) {
     console.error('Sync Down Error:', err);
+    return { success: false, message: err.message };
+  }
+};
+
+export const autoSync = async (user) => {
+  if (!user || !user.email) return { success: false, message: 'No user session' };
+  
+  const state = await NetInfo.fetch();
+  if (!state.isConnected) return { success: false, message: 'Offline' };
+
+  try {
+    const pending = await AsyncStorage.getItem(PENDING_SYNC_KEY);
+    if (pending === 'true') {
+      const upRes = await syncUp(user);
+      if (upRes.success) {
+        await AsyncStorage.setItem(PENDING_SYNC_KEY, 'false');
+      }
+      return upRes;
+    }
+    
+    // Check if cloud has newer data
+    const downRes = await syncDown(user);
+    if (downRes.success && downRes.message === 'Already up to date') {
+      // If local already matches cloud timestamp, push any unpushed state
+      return await syncUp(user);
+    }
+    return downRes;
+  } catch (err) {
+    console.error('autoSync error:', err);
     return { success: false, message: err.message };
   }
 };

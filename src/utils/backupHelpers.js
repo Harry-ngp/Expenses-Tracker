@@ -3,6 +3,7 @@ import * as Sharing from 'expo-sharing';
 import * as DocumentPicker from 'expo-document-picker';
 import { Alert } from 'react-native';
 import { getDb } from '../db/schema';
+import { getMonthlyBudgetsJson, saveMonthlyBudgetsJson } from '../db/queries';
 
 /**
  * Export all user data (expenses, categories, category budgets) directly into user's public folder (Downloads).
@@ -33,23 +34,19 @@ export const exportUserDataBackup = async (user) => {
       [user.id]
     );
 
-    // 3. Fetch category budgets
-    const categoryBudgets = db.getAllSync(
-      `SELECT category_id, budget FROM category_budgets WHERE user_id = ?;`,
-      [user.id]
-    );
+    // 3. Fetch monthly budgets JSON
+    const monthlyBudgets = getMonthlyBudgetsJson(user.id);
 
     const backupPayload = {
       app: 'ExpenseIQ',
-      version: '1.0',
+      version: '2.0',
       exportedAt: new Date().toISOString(),
       user: {
         username: user.username,
         email: user.email,
-        monthly_budget: user.monthly_budget,
       },
+      monthlyBudgets,
       categories,
-      categoryBudgets,
       expenses,
     };
 
@@ -131,26 +128,15 @@ export const importUserDataBackup = async (user, onSuccess) => {
 
     // Begin database import
     db.withTransactionSync(() => {
-      // Import/Update monthly budget if provided
-      if (backupData.user && backupData.user.monthly_budget) {
+      // Import month-wise budgets if provided
+      if (backupData.monthlyBudgets && typeof backupData.monthlyBudgets === 'object') {
+        saveMonthlyBudgetsJson(user.id, backupData.monthlyBudgets);
+      } else if (backupData.user && backupData.user.monthly_budget) {
+        // Fallback for legacy backups
         db.runSync('UPDATE users SET monthly_budget = ? WHERE id = ?;', [
           backupData.user.monthly_budget,
           user.id,
         ]);
-      }
-
-      // Import category budgets if provided
-      if (Array.isArray(backupData.categoryBudgets)) {
-        for (const cb of backupData.categoryBudgets) {
-          if (cb.category_id && cb.budget > 0) {
-            db.runSync(
-              `INSERT INTO category_budgets (user_id, category_id, budget)
-               VALUES (?, ?, ?)
-               ON CONFLICT(user_id, category_id) DO UPDATE SET budget = excluded.budget;`,
-              [user.id, cb.category_id, cb.budget]
-            );
-          }
-        }
       }
 
       // Import expenses
