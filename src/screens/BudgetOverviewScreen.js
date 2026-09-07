@@ -52,7 +52,6 @@ export default function BudgetOverviewScreen() {
   const [overallBudget, setOverallBudget] = useState(0);
   const [refreshing, setRefreshing] = useState(false);
   const [selectedMonth, setSelectedMonth] = useState(currentMonthKey());
-  const [cardHeight, setCardHeight] = useState(210);
   
   const [monthDropOpen, setMonthDropOpen] = useState(false);
   const [monthItems, setMonthItems] = useState(generateMonthOptions());
@@ -103,11 +102,17 @@ export default function BudgetOverviewScreen() {
   // Flip Animation State
   const isFlipped = useSharedValue(0);
 
-  useFocusEffect(useCallback(() => { 
-    loadData(); 
-    // Reset flip when screen gains focus
+  useFocusEffect(
+    useCallback(() => { 
+      loadData(); 
+      // Reset flip when screen gains focus
+      isFlipped.value = 0;
+    }, [loadData, isFlipped])
+  );
+
+  useEffect(() => {
     isFlipped.value = 0;
-  }, [loadData, isFlipped]));
+  }, [selectedMonth]);
 
   const isExceeded = overallBudget > 0 && monthTotal > overallBudget;
   const overAmount = isExceeded ? monthTotal - overallBudget : 0;
@@ -138,25 +143,23 @@ export default function BudgetOverviewScreen() {
   const dailyAllowance = Math.floor(remaining / daysLeft) || 0;
 
   const handleFlip = () => {
-    isFlipped.value = withSpring(isFlipped.value === 0 ? 1 : 0, { damping: 15, stiffness: 120 });
+    isFlipped.value = withSpring(isFlipped.value >= 0.5 ? 0 : 1, { damping: 15, stiffness: 120 });
   };
 
   const frontAnimatedStyle = useAnimatedStyle(() => {
     const rotateVal = interpolate(isFlipped.value, [0, 1], [0, 180]);
-    const opacity = interpolate(isFlipped.value, [0, 0.49, 0.5, 1], [1, 1, 0, 0]);
     return {
       transform: [{ perspective: 1000 }, { rotateY: `${rotateVal}deg` }],
-      opacity,
-      zIndex: isFlipped.value < 0.5 ? 10 : 0,
+      opacity: isFlipped.value >= 0.5 ? 0 : 1,
+      zIndex: isFlipped.value >= 0.5 ? 0 : 10,
     };
   });
 
   const backAnimatedStyle = useAnimatedStyle(() => {
-    const rotateVal = interpolate(isFlipped.value, [0, 1], [-180, 0]);
-    const opacity = interpolate(isFlipped.value, [0, 0.49, 0.5, 1], [0, 0, 1, 1]);
+    const rotateVal = interpolate(isFlipped.value, [0, 1], [180, 360]);
     return {
       transform: [{ perspective: 1000 }, { rotateY: `${rotateVal}deg` }],
-      opacity,
+      opacity: isFlipped.value >= 0.5 ? 1 : 0,
       zIndex: isFlipped.value >= 0.5 ? 10 : 0,
     };
   });
@@ -197,17 +200,9 @@ export default function BudgetOverviewScreen() {
 
         {/* Monthly Budget Card (Flippable) */}
         {overallBudget > 0 ? (
-          <View style={{ minHeight: cardHeight, marginBottom: 24, zIndex: 1000 }}>
+          <View style={{ zIndex: 1000 }}>
             {/* Front of Card */}
-            <Animated.View 
-              onLayout={(e) => {
-                const h = e.nativeEvent.layout.height;
-                if (h > 60 && Math.abs(h - cardHeight) > 2) {
-                  setCardHeight(h);
-                }
-              }}
-              style={[styles.budgetCard, frontAnimatedStyle, { marginBottom: 0 }]}
-            >
+            <Animated.View style={[styles.budgetCard, frontAnimatedStyle, { backfaceVisibility: 'hidden' }]}>
               <View style={styles.budgetRow}>
                 <TouchableOpacity onPress={() => navigation.navigate('BudgetSettings', { selectedMonth })} activeOpacity={0.75}>
                   <Text style={styles.budgetLabel}>Monthly Budget ✏️</Text>
@@ -261,47 +256,45 @@ export default function BudgetOverviewScreen() {
                 styles.budgetCard,
                 backAnimatedStyle,
                 {
+                  backfaceVisibility: 'hidden',
                   position: 'absolute',
                   top: 0,
                   left: 0,
                   right: 0,
-                  bottom: 0,
-                  marginBottom: 0,
-                  padding: 0,
-                  borderRadius: RADIUS.xl,
+                  bottom: 24,
                   overflow: 'hidden',
+                  padding: 0,
+                  backgroundColor: '#FF6B6B',
                 },
               ]}
             >
-              <TouchableWithoutFeedback onPress={handleFlip}>
-                <View style={{ flex: 1, padding: 24, justifyContent: 'center', alignItems: 'center' }}>
-                  <LinearGradient
-                    colors={['#FF6B6B', '#8862F8']}
-                    start={{ x: 0, y: 0 }}
-                    end={{ x: 1, y: 1 }}
-                    style={[StyleSheet.absoluteFillObject, { borderRadius: RADIUS.xl }]}
-                  />
-
-                  <View style={{ zIndex: 2, alignItems: 'center', justifyContent: 'center' }}>
-                    <Text style={{ fontFamily: FONTS.semiBold, fontSize: 13, color: 'rgba(255,255,255,0.85)', marginBottom: 8, textTransform: 'uppercase', letterSpacing: 1 }}>
-                      Daily Allowance
+              <LinearGradient
+                colors={['#FF6B6B', '#8862F8']}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+                style={{ flex: 1, width: '100%', height: '100%' }}
+              >
+                <TouchableWithoutFeedback onPress={handleFlip}>
+                  <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', padding: 24 }}>
+                    <Text style={styles.dailyAllowanceLabel}>
+                      DAILY ALLOWANCE
                     </Text>
-                    <Text style={{ fontFamily: FONTS.bold, fontSize: 36, color: '#FFFFFF', marginBottom: 4 }}>
+                    <Text style={styles.dailyAllowanceAmount}>
                       {formatINR(dailyAllowance)}
                     </Text>
                     
-                    <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 12, backgroundColor: 'rgba(255,255,255,0.2)', paddingHorizontal: 16, paddingVertical: 6, borderRadius: 20 }}>
-                      <Text style={{ fontFamily: FONTS.medium, fontSize: 13, color: '#FFFFFF' }}>
+                    <View style={styles.daysRemainingBadge}>
+                      <Text style={styles.daysRemainingText}>
                         {daysLeft} {daysLeft === 1 ? 'day' : 'days'} remaining
                       </Text>
                     </View>
 
-                    <Text style={{ fontFamily: FONTS.medium, fontSize: 11, color: 'rgba(255,255,255,0.75)', marginTop: 12 }}>
+                    <Text style={styles.tapToFlipBackText}>
                       Tap to flip back ↺
                     </Text>
                   </View>
-                </View>
-              </TouchableWithoutFeedback>
+                </TouchableWithoutFeedback>
+              </LinearGradient>
             </Animated.View>
           </View>
         ) : (
@@ -455,6 +448,41 @@ const styles = StyleSheet.create({
     color: TEXT_MUTED,
     textAlign: 'center',
     marginTop: 10,
+  },
+
+  dailyAllowanceLabel: {
+    fontFamily: FONTS.semiBold,
+    fontSize: 14,
+    color: 'rgba(255, 255, 255, 0.85)',
+    marginBottom: 8,
+    textTransform: 'uppercase',
+    letterSpacing: 1,
+  },
+  dailyAllowanceAmount: {
+    fontFamily: FONTS.bold,
+    fontSize: 36,
+    color: '#FFFFFF',
+    marginBottom: 4,
+  },
+  daysRemainingBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 14,
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 20,
+  },
+  daysRemainingText: {
+    fontFamily: FONTS.medium,
+    fontSize: 13,
+    color: '#FFFFFF',
+  },
+  tapToFlipBackText: {
+    fontFamily: FONTS.medium,
+    fontSize: 12,
+    color: 'rgba(255, 255, 255, 0.75)',
+    marginTop: 14,
   },
 
   dropdownContainerWrapper: { width: 130, zIndex: 5000 },

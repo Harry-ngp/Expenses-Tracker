@@ -17,7 +17,7 @@ const executeWithClockSkewRetry = async (queryFn, maxRetries = 2, delayMs = 2000
           res.error.code === 'PGRST303' ||
           (res.error.message && res.error.message.toLowerCase().includes('future'));
         if (isClockSkew && attempt < maxRetries) {
-          console.warn(`[Sync] Clock skew detected (${res.error.code || 'JWT issued at future'}). Retrying in ${delayMs / 1000}s... (Attempt ${attempt + 1}/${maxRetries})`);
+          console.log(`[Sync] Clock skew detected (${res.error.code || 'JWT issued at future'}). Retrying in ${delayMs / 1000}s... (Attempt ${attempt + 1}/${maxRetries})`);
           await new Promise(resolve => setTimeout(resolve, delayMs));
           continue;
         }
@@ -28,7 +28,7 @@ const executeWithClockSkewRetry = async (queryFn, maxRetries = 2, delayMs = 2000
         err?.code === 'PGRST303' ||
         (err?.message && err.message.toLowerCase().includes('future'));
       if (isClockSkew && attempt < maxRetries) {
-        console.warn(`[Sync] Clock skew exception (${err?.code || 'JWT issued at future'}). Retrying in ${delayMs / 1000}s... (Attempt ${attempt + 1}/${maxRetries})`);
+        console.log(`[Sync] Clock skew exception (${err?.code || 'JWT issued at future'}). Retrying in ${delayMs / 1000}s... (Attempt ${attempt + 1}/${maxRetries})`);
         await new Promise(resolve => setTimeout(resolve, delayMs));
         continue;
       }

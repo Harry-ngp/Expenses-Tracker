@@ -17,11 +17,15 @@ import AppNavigator from './src/navigation/AppNavigator';
 import { initializeDatabase } from './src/db/schema';
 import { COLORS } from './src/constants/theme';
 
+LogBox.ignoreAllLogs(true);
 LogBox.ignoreLogs([
   'setLayoutAnimationEnabledExperimental is currently a no-op',
   'SafeAreaView has been deprecated',
   'InteractionManager has been deprecated',
   'VirtualizedLists should never be nested',
+  'PGRST303',
+  'Clock skew detected',
+  'JWT issued at future',
 ]);
 
 export default function App() {
