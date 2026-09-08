@@ -15,12 +15,11 @@ const sanitizeUserData = (data) => {
     id: Number(data.id),
     email: String(data.email || ''),
     username: String(data.username || ''),
-    monthly_budget: Number(data.monthly_budget || 0),
   };
 };
 
 export const AuthProvider = ({ children }) => {
-  const [user, setUser] = useState(null); // { id, email, username, monthly_budget }
+  const [user, setUser] = useState(null); // { id, email, username }
   const [loading, setLoading] = useState(true);
   // Track when login() is handling the flow so the auth listener doesn't race
   const loginInProgress = useRef(false);
@@ -92,10 +91,10 @@ export const AuthProvider = ({ children }) => {
         const username = supabaseUser.user_metadata?.username || email.split('@')[0];
         
         const result = db.runSync(
-          'INSERT INTO users (email, username, password_hash, monthly_budget) VALUES (?, ?, ?, ?)',
-          [email, username, 'supabase_auth', 0]
+          'INSERT INTO users (email, username, password_hash) VALUES (?, ?, ?)',
+          [email, username, 'supabase_auth']
         );
-        localUser = { id: result.lastInsertRowId, email, username, monthly_budget: 0 };
+        localUser = { id: result.lastInsertRowId, email, username };
       }
 
       const cleanUser = sanitizeUserData(localUser);
@@ -159,17 +158,7 @@ export const AuthProvider = ({ children }) => {
     setLoading(false);
   };
 
-  const updateBudget = async (budget) => {
-    setUser((u) => {
-      const updated = sanitizeUserData({ ...u, monthly_budget: budget });
-      if (updated) {
-        AsyncStorage.setItem(AUTH_KEY, JSON.stringify(updated)).catch((err) =>
-          console.error('Failed to update user budget in storage:', err)
-        );
-      }
-      return updated;
-    });
-  };
+  const updateBudget = async () => {};
 
   return (
     <AuthContext.Provider value={{ user, loading, login, register, logout, updateBudget }}>

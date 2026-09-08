@@ -103,16 +103,11 @@ export const syncUp = async (user) => {
     const payload = getExportPayload(user);
     if (!payload) return { success: false, message: 'Failed to generate payload' };
 
-    const db = getDb();
-    const userRow = db.getFirstSync('SELECT monthly_budget FROM users WHERE id = ?;', [user.id]);
-    const currentMonthlyBudget = userRow?.monthly_budget ?? user.monthly_budget ?? 0;
-    
     const { error } = await executeWithClockSkewRetry(async () => {
       return await supabase.from('user_sync_data').upsert({
         user_id: session.user.id,
         email: session.user.email,
         username: user.username,
-        monthly_budget: currentMonthlyBudget,
         data_json: payload,
         last_synced_at: new Date().toISOString()
       }, { onConflict: 'user_id' });
@@ -172,7 +167,10 @@ export const syncDown = async (user) => {
       if (backupData.monthlyBudgets && typeof backupData.monthlyBudgets === 'object') {
         saveMonthlyBudgetsJson(user.id, backupData.monthlyBudgets);
       } else if (backupData.user && backupData.user.monthly_budget) {
-        db.runSync('UPDATE users SET monthly_budget = ? WHERE id = ?;', [backupData.user.monthly_budget, user.id]);
+        const currentMonth = new Date().toISOString().slice(0, 7);
+        saveMonthlyBudgetsJson(user.id, {
+          [currentMonth]: { overall: Number(backupData.user.monthly_budget) || 0, categories: {} },
+        });
       }
       
       if (Array.isArray(backupData.categories)) {

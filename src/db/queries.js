@@ -22,11 +22,6 @@ export const getUserByEmail = (email) => {
   );
 };
 
-export const updateMonthlyBudget = (userId, budget) => {
-  const db = getDb();
-  db.runSync('UPDATE users SET monthly_budget = ? WHERE id = ?;', [budget, userId]);
-};
-
 // ═══════════════════════════════════════════════════════════════
 //  EXPENSE QUERIES
 // ═══════════════════════════════════════════════════════════════
@@ -392,11 +387,6 @@ export const setMonthlyBudget = (userId, month, budget) => {
   }
   budgets[month].overall = Number(budget) || 0;
   saveMonthlyBudgetsJson(userId, budgets);
-
-  // Keep users.monthly_budget in sync if setting current month
-  if (month === currentMonthKey()) {
-    updateMonthlyBudget(userId, Number(budget) || 0);
-  }
 };
 
 export const deleteMonthlyBudget = (userId, month) => {

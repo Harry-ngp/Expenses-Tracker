@@ -105,7 +105,7 @@ const CategoryBudgetCard = ({ cat, spent, limit, colors, onUpdate, onRemove }) =
 };
 
 export default function BudgetSettingsScreen() {
-  const { user, updateBudget } = useAuth();
+  const { user } = useAuth();
   const { colors } = useTheme();
   const navigation = useNavigation();
   const route = useRoute();
@@ -160,9 +160,6 @@ export default function BudgetSettingsScreen() {
       return;
     }
     setMonthlyBudget(user.id, selectedMonth, val);
-    if (selectedMonth === currentMonthKey()) {
-      updateBudget(val);
-    }
     if (user) {
       syncUp(user).catch(err => console.log('Budget sync failed:', err));
     }

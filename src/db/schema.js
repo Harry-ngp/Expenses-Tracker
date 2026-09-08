@@ -29,7 +29,6 @@ export const initializeDatabase = () => {
       email         TEXT    NOT NULL UNIQUE,
       username      TEXT    NOT NULL,
       password_hash TEXT    NOT NULL,
-      monthly_budget REAL   DEFAULT 0,
       monthly_budgets_json TEXT DEFAULT '{}',
       created_at    TEXT    DEFAULT (datetime('now'))
     );
@@ -40,6 +39,13 @@ export const initializeDatabase = () => {
   } catch (e) {
     // Column might already exist
   }
+
+  try {
+    db.execSync("ALTER TABLE users DROP COLUMN monthly_budget;");
+  } catch (e) {
+    // Column might already be dropped or not exist
+  }
+
 
   // ── categories table ─────────────────────────────────────────
   db.execSync(`

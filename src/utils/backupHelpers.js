@@ -150,11 +150,12 @@ export const importUserDataBackup = async (user, onSuccess) => {
         saveMonthlyBudgetsJson(user.id, backupData.monthlyBudgets);
       } else if (backupData.user && backupData.user.monthly_budget) {
         // Fallback for legacy backups
-        db.runSync('UPDATE users SET monthly_budget = ? WHERE id = ?;', [
-          backupData.user.monthly_budget,
-          user.id,
-        ]);
+        const currentMonth = new Date().toISOString().slice(0, 7);
+        saveMonthlyBudgetsJson(user.id, {
+          [currentMonth]: { overall: Number(backupData.user.monthly_budget) || 0, categories: {} },
+        });
       }
+
 
       // Import payment methods if provided
       if (Array.isArray(backupData.paymentMethods)) {
