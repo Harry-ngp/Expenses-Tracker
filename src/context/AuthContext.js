@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase } from '../config/supabase';
-import { syncDown } from '../utils/syncManager';
+import { syncDown, syncUp } from '../utils/syncManager';
 import { getDb } from '../db/schema';
 import { getUserByEmail } from '../db/queries';
 
@@ -86,15 +86,29 @@ export const AuthProvider = ({ children }) => {
       let localUser = getUserByEmail(email);
 
       if (!localUser) {
-        // First time logging in on this device. Create local user shell.
         const db = getDb();
-        const username = supabaseUser.user_metadata?.username || email.split('@')[0];
-        
-        const result = db.runSync(
-          'INSERT INTO users (email, username, password_hash) VALUES (?, ?, ?)',
-          [email, username, 'supabase_auth']
-        );
-        localUser = { id: result.lastInsertRowId, email, username };
+        // Check if there is an existing single offline user who has data
+        const existingUsers = db.getAllSync('SELECT * FROM users ORDER BY id ASC');
+        if (existingUsers.length === 1 && existingUsers[0].password_hash !== 'supabase_auth') {
+          const offlineUser = existingUsers[0];
+          db.runSync(
+            'UPDATE users SET email = ?, password_hash = ? WHERE id = ?',
+            [email, 'supabase_auth', offlineUser.id]
+          );
+          localUser = {
+            id: offlineUser.id,
+            email,
+            username: offlineUser.username || supabaseUser.user_metadata?.username || email.split('@')[0],
+          };
+        } else {
+          // First time logging in on this device. Create local user shell.
+          const username = supabaseUser.user_metadata?.username || email.split('@')[0];
+          const result = db.runSync(
+            'INSERT INTO users (email, username, password_hash) VALUES (?, ?, ?)',
+            [email, username, 'supabase_auth']
+          );
+          localUser = { id: result.lastInsertRowId, email, username };
+        }
       }
 
       const cleanUser = sanitizeUserData(localUser);
@@ -121,8 +135,13 @@ export const AuthProvider = ({ children }) => {
         
         // 3. Pull the latest cloud data into SQLite BEFORE setting user state
         //    This ensures Dashboard will mount with fresh data already in the DB
-        await syncDown(localUser).catch(err => console.log('Sync-down on login failed:', err));
+        const downRes = await syncDown(localUser).catch(err => console.log('Sync-down on login failed:', err));
         
+        // If cloud had no data yet (brand new account / test wiped), push local data immediately
+        if (downRes?.message === 'No cloud data to sync') {
+          await syncUp(localUser).catch(err => console.log('Initial sync-up on login failed:', err));
+        }
+
         // 4. Re-read the local user in case syncDown updated their budget
         const refreshedUser = getUserByEmail(localUser.email);
         const finalUser = sanitizeUserData(refreshedUser || localUser);

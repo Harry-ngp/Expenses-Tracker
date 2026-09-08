@@ -65,14 +65,8 @@ export default function RegisterScreen({ navigation }) {
     if (!validate()) return;
     setLoading(true);
     try {
-      const existing = getUserByEmail(email.toLowerCase().trim());
-      if (existing) {
-        setErrors({ email: 'This email is already registered locally' });
-        return;
-      }
-      
       const data = await register(email.toLowerCase().trim(), password, username.trim());
-      // AuthContext will handle local SQLite creation via onAuthStateChange IF it logs in immediately.
+      // AuthContext will handle local SQLite creation/linking via onAuthStateChange IF it logs in immediately.
       // But if email confirmation is required, session will be null.
       if (!data?.session) {
         Alert.alert(
@@ -82,8 +76,8 @@ export default function RegisterScreen({ navigation }) {
         );
       }
     } catch (err) {
-      if (err.message.includes('User already registered')) {
-        setErrors({ email: 'This email is already registered online' });
+      if (err.message && err.message.toLowerCase().includes('already registered')) {
+        setErrors({ email: 'This email is already registered online. Please log in.' });
       } else {
         Alert.alert('Registration Failed', err.message);
       }

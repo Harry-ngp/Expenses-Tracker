@@ -15,10 +15,11 @@ export const createUser = (email, username, passwordHash) => {
 };
 
 export const getUserByEmail = (email) => {
+  if (!email) return null;
   const db = getDb();
   return db.getFirstSync(
-    'SELECT * FROM users WHERE email = ?;',
-    [email.toLowerCase().trim()]
+    'SELECT * FROM users WHERE LOWER(TRIM(email)) = LOWER(TRIM(?));',
+    [String(email).toLowerCase().trim()]
   );
 };
 

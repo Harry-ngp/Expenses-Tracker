@@ -239,8 +239,8 @@ export const autoSync = async (user) => {
     
     // Check if cloud has newer data
     const downRes = await syncDown(user);
-    if (downRes.success && downRes.message === 'Already up to date') {
-      // If local already matches cloud timestamp, push any unpushed state
+    if (downRes.success && (downRes.message === 'Already up to date' || downRes.message === 'No cloud data to sync')) {
+      // If local already matches cloud timestamp, or cloud is empty, push local state to cloud
       return await syncUp(user);
     }
     return downRes;

@@ -341,7 +341,7 @@ export default function PaymentMethodsScreen() {
       const idsToSave = fullList.map(m => m.id);
       try {
         updatePaymentMethodsOrder(user.id, idsToSave);
-        syncUp(user.id).catch(() => {});
+        if (user) syncUp(user).catch(() => {});
       } catch (err) {
         console.error('Failed to save payment methods order:', err);
       }
@@ -409,7 +409,7 @@ export default function PaymentMethodsScreen() {
       }
       setModalVisible(false);
       loadMethods();
-      syncUp(user.id).catch(() => {});
+      if (user) syncUp(user).catch(() => {});
     } catch (e) {
       Alert.alert('Error', 'Failed to save payment method. Please try again.');
       console.error(e);
@@ -441,7 +441,7 @@ export default function PaymentMethodsScreen() {
             try {
               deletePaymentMethodSafe(user.id, method.id);
               loadMethods();
-              syncUp(user.id).catch(() => {});
+              if (user) syncUp(user).catch(() => {});
             } catch (e) {
               Alert.alert('Error', 'Failed to delete payment method.');
               console.error(e);
