@@ -19,15 +19,15 @@ import Svg, { Path, Circle } from 'react-native-svg';
 
 const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
 
-const BRAND      = '#FF6B6B';
-const BG_WHITE   = '#FFFFFF';
-const BG_SCREEN  = '#F2F3F7';
-const TEXT_DARK  = '#1A1A2E';
+const BRAND = '#FF6B6B';
+const BG_WHITE = '#FFFFFF';
+const BG_SCREEN = '#F2F3F7';
+const TEXT_DARK = '#1A1A2E';
 const TEXT_MUTED = '#9EA3B5';
-const BORDER     = '#E6E8F0';
-const ROW_H      = 54;
-const BTN_H      = 54;
-const BTN_MX     = 20;
+const BORDER = '#E6E8F0';
+const ROW_H = 54;
+const BTN_H = 54;
+const BTN_MX = 20;
 
 const fmtDate = (iso) => {
   if (!iso) return '';
@@ -43,9 +43,9 @@ const AnimatedPath = Animated.createAnimatedComponent(Path);
 
 function PhonePeSuccessOverlay({ visible, onDone }) {
   const overlayOpacity = useRef(new Animated.Value(0)).current;
-  const circleScale    = useRef(new Animated.Value(0)).current;
-  const pathAnim       = useRef(new Animated.Value(0)).current;
-  const textOpacity    = useRef(new Animated.Value(0)).current;
+  const circleScale = useRef(new Animated.Value(0)).current;
+  const pathAnim = useRef(new Animated.Value(0)).current;
+  const textOpacity = useRef(new Animated.Value(0)).current;
   const textTranslateY = useRef(new Animated.Value(20)).current;
 
   useEffect(() => {
@@ -61,7 +61,7 @@ function PhonePeSuccessOverlay({ visible, onDone }) {
     Animated.sequence([
       // 1. Fade in white/light background overlay
       Animated.timing(overlayOpacity, { toValue: 1, duration: 80, useNativeDriver: true }),
-      
+
       // 2. Pop the green circle
       Animated.spring(circleScale, {
         toValue: 1,
@@ -161,30 +161,30 @@ function PhonePeSuccessOverlay({ visible, onDone }) {
 // Custom Animated Dropdown (Bottom Sheet)
 // ──────────────────────────────────────────────
 function Dropdown({ label, value, items, onChange, placeholder, leftIcon, onAddNew, addNewLabel }) {
-  const [open, setOpen]   = useState(false);
+  const [open, setOpen] = useState(false);
   const chevron = useRef(new Animated.Value(0)).current;
   const overlay = useRef(new Animated.Value(0)).current;
-  const sheetY  = useRef(new Animated.Value(500)).current;
+  const sheetY = useRef(new Animated.Value(500)).current;
 
   const openSheet = () => {
     setOpen(true);
     Animated.parallel([
       Animated.timing(chevron, { toValue: 1, duration: 220, easing: RNEasing.out(RNEasing.quad), useNativeDriver: true }),
-      Animated.timing(overlay,  { toValue: 1, duration: 200, useNativeDriver: true }),
-      Animated.spring(sheetY,   { toValue: 0, useNativeDriver: true, tension: 70, friction: 12 }),
+      Animated.timing(overlay, { toValue: 1, duration: 200, useNativeDriver: true }),
+      Animated.spring(sheetY, { toValue: 0, useNativeDriver: true, tension: 70, friction: 12 }),
     ]).start();
   };
 
   const closeSheet = () => {
     Animated.parallel([
       Animated.timing(chevron, { toValue: 0, duration: 180, useNativeDriver: true }),
-      Animated.timing(overlay,  { toValue: 0, duration: 170, useNativeDriver: true }),
-      Animated.timing(sheetY,   { toValue: 500, duration: 220, easing: RNEasing.in(RNEasing.quad), useNativeDriver: true }),
+      Animated.timing(overlay, { toValue: 0, duration: 170, useNativeDriver: true }),
+      Animated.timing(sheetY, { toValue: 500, duration: 220, easing: RNEasing.in(RNEasing.quad), useNativeDriver: true }),
     ]).start(() => setOpen(false));
   };
 
-  const select   = (v) => { onChange(v); closeSheet(); };
-  const rotate   = chevron.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '180deg'] });
+  const select = (v) => { onChange(v); closeSheet(); };
+  const rotate = chevron.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '180deg'] });
   const selected = items.find(i => i.value === value);
 
   return (
@@ -262,22 +262,33 @@ function Dropdown({ label, value, items, onChange, placeholder, leftIcon, onAddN
 // Main Screen
 // ──────────────────────────────────────────────
 export default function AddExpenseScreen({ navigation, route }) {
-  const { user }            = useAuth();
+  const { user } = useAuth();
   const { addNotification } = useNotifications();
-  const insets              = useSafeAreaInsets();
+  const insets = useSafeAreaInsets();
 
-  const editing   = route.params?.expense || null;
+  const editing = route.params?.expense || null;
   const isEditing = !!editing;
-  const initDate  = editing ? new Date(editing.date) : new Date();
+  const initDate = editing ? new Date(editing.date) : new Date();
 
-  const [amount,      setAmount]      = useState(editing ? String(editing.amount) : '');
+  const [amount, setAmount] = useState(editing ? String(editing.amount) : '');
   const [description, setDescription] = useState(editing?.description || '');
-  const [date,        setDate]        = useState(initDate.toISOString());
-  const [categoryId,  setCategoryId]  = useState(editing?.category_id || null);
-  const [payMethod,   setPayMethod]   = useState(editing?.payment_method || 'Cash');
-  const [loading,     setLoading]     = useState(false);
-  const [catItems,    setCatItems]    = useState([]);
-  const [showDate,    setShowDate]    = useState(false);
+  const [date, setDate] = useState(initDate.toISOString());
+  const [categoryId, setCategoryId] = useState(editing?.category_id || null);
+  const [payMethod, setPayMethod] = useState(() => {
+    if (editing?.payment_method) return editing.payment_method;
+    if (user?.id) {
+      try {
+        const rows = getPaymentMethodsForUser(user.id, { excludeOther: true });
+        if (rows && rows.length > 0) return rows[0].name;
+      } catch (e) {
+        console.error('Initial payMethod load error:', e);
+      }
+    }
+    return null;
+  });
+  const [loading, setLoading] = useState(false);
+  const [catItems, setCatItems] = useState([]);
+  const [showDate, setShowDate] = useState(false);
   const [showSuccess, setShowSuccess] = useState(false);
 
   const btnBottom = useRef(new Animated.Value(insets.bottom + 20)).current;
@@ -286,8 +297,9 @@ export default function AddExpenseScreen({ navigation, route }) {
     const showSub = Keyboard.addListener(
       Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow',
       (e) => {
+        const offset = Platform.OS === 'android' ? 55 : 16;
         Animated.spring(btnBottom, {
-          toValue: e.endCoordinates.height + 12,
+          toValue: e.endCoordinates.height + offset,
           useNativeDriver: false,
           tension: 80, friction: 10,
         }).start();
@@ -306,7 +318,7 @@ export default function AddExpenseScreen({ navigation, route }) {
     return () => { showSub.remove(); hideSub.remove(); };
   }, [insets.bottom]);
 
-  const [payItems,    setPayItems]    = useState([]);
+  const [payItems, setPayItems] = useState([]);
 
   const loadPaymentMethods = useCallback(() => {
     if (!user) return;
@@ -317,18 +329,22 @@ export default function AddExpenseScreen({ navigation, route }) {
         setPayItems(items);
         if (!isEditing) {
           setPayMethod(prev => {
+            if (!prev) return items[0].value;
             const exists = items.some(i => i.value === prev);
             return exists ? prev : items[0].value;
           });
         }
       } else {
         const defaults = [
-          { label: 'Cash',        value: 'Cash',        rawIcon: '💵' },
-          { label: 'UPI',         value: 'UPI',         rawIcon: '📱' },
-          { label: 'Card',        value: 'Card',        rawIcon: '💳' },
+          { label: 'Cash', value: 'Cash', rawIcon: '💵' },
+          { label: 'UPI', value: 'UPI', rawIcon: '📱' },
+          { label: 'Card', value: 'Card', rawIcon: '💳' },
           { label: 'Net Banking', value: 'Net Banking', rawIcon: '🏦' },
         ];
         setPayItems(defaults);
+        if (!isEditing) {
+          setPayMethod(prev => prev || defaults[0].value);
+        }
       }
     } catch (e) {
       console.error('Failed to load payment methods in AddExpense:', e);
@@ -337,7 +353,7 @@ export default function AddExpenseScreen({ navigation, route }) {
 
   const loadCategories = useCallback(() => {
     if (!user) return;
-    const rows  = getCategoriesForUser(user.id);
+    const rows = getCategoriesForUser(user.id);
     const items = rows.map(c => ({ label: c.name, value: c.id, rawIcon: c.icon, rawColor: c.color }));
     setCatItems(items);
     if (!isEditing && items.length > 0) {
@@ -388,7 +404,7 @@ export default function AddExpenseScreen({ navigation, route }) {
       // 🎉 Success: keyboard dismiss → PhonePe animation
       Keyboard.dismiss();
       setShowSuccess(true);
-      
+
       // Trigger background sync after mutation
       syncUp(user).catch(err => console.log('Background sync failed:', err));
 
@@ -538,7 +554,7 @@ export default function AddExpenseScreen({ navigation, route }) {
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: BG_SCREEN },
-  flex:   { flex: 1 },
+  flex: { flex: 1 },
 
   // Header
   header: {
@@ -555,7 +571,7 @@ const styles = StyleSheet.create({
   // Amount
   amountHero: { alignItems: 'center', paddingVertical: 18, paddingHorizontal: 24 },
   amountHint: { fontFamily: FONTS.regular, fontSize: 12, color: TEXT_MUTED, marginBottom: 6 },
-  amountRow:  { flexDirection: 'row', alignItems: 'center' },
+  amountRow: { flexDirection: 'row', alignItems: 'center' },
   currencySymbol: { fontFamily: FONTS.bold, fontSize: 28, color: TEXT_DARK, marginRight: 4, marginTop: 6 },
   amountInput: {
     fontFamily: FONTS.bold, fontSize: 52, color: TEXT_DARK,
@@ -575,10 +591,10 @@ const styles = StyleSheet.create({
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
     paddingHorizontal: 16, minHeight: ROW_H,
   },
-  rowLeft:  { flexDirection: 'row', alignItems: 'center', flex: 1 },
+  rowLeft: { flexDirection: 'row', alignItems: 'center', flex: 1 },
   rowIcon: { width: 32, height: 32, borderRadius: 9, alignItems: 'center', justifyContent: 'center', marginRight: 12 },
   rowValue: { fontFamily: FONTS.medium, fontSize: 15, color: TEXT_DARK, flex: 1 },
-  divider:  { height: 1, backgroundColor: BORDER, marginLeft: 60 },
+  divider: { height: 1, backgroundColor: BORDER, marginLeft: 60 },
 
   // Notes
   notesInput: { flex: 1, fontFamily: FONTS.regular, fontSize: 15, color: TEXT_DARK, includeFontPadding: false, paddingVertical: 0 },
