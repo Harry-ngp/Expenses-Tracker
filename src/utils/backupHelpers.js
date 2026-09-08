@@ -30,7 +30,12 @@ export const exportUserDataBackup = async (user) => {
 
     // 2. Fetch custom categories
     const categories = db.getAllSync(
-      `SELECT id, name, icon, color FROM categories WHERE user_id = ? OR user_id IS NULL;`,
+      `SELECT id, name, icon, color, sort_order FROM categories 
+       WHERE user_id = ? OR user_id IS NULL
+       ORDER BY 
+         CASE WHEN id = 10 OR LOWER(name) = 'other' THEN 1 ELSE 0 END ASC,
+         sort_order ASC, 
+         id ASC;`,
       [user.id]
     );
 

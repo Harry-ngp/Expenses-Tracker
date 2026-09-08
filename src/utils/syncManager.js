@@ -50,7 +50,12 @@ export const getExportPayload = (user) => {
   );
   
   const categories = db.getAllSync(
-    `SELECT id, name, icon, color FROM categories WHERE user_id = ? OR user_id IS NULL;`,
+    `SELECT id, name, icon, color, user_id, sort_order FROM categories 
+     WHERE user_id = ? OR user_id IS NULL
+     ORDER BY 
+       CASE WHEN id = 10 OR LOWER(name) = 'other' THEN 1 ELSE 0 END ASC,
+       sort_order ASC, 
+       id ASC;`,
     [user.id]
   );
   
@@ -160,8 +165,8 @@ export const syncDown = async (user) => {
       if (Array.isArray(backupData.categories)) {
         for (const cat of backupData.categories) {
           db.runSync(
-            'INSERT OR IGNORE INTO categories (id, user_id, name, icon, color) VALUES (?, ?, ?, ?, ?)',
-            [cat.id, cat.user_id || user.id, cat.name, cat.icon, cat.color]
+            'INSERT OR REPLACE INTO categories (id, user_id, name, icon, color, sort_order) VALUES (?, ?, ?, ?, ?, ?)',
+            [cat.id, cat.user_id || user.id, cat.name, cat.icon, cat.color, cat.sort_order ?? 0]
           );
         }
       }

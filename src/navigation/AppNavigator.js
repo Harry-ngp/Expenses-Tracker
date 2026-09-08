@@ -28,6 +28,7 @@ import BudgetSettingsScreen  from '../screens/BudgetSettingsScreen';
 import CalendarScreen        from '../screens/CalendarScreen';
 import MenuScreen            from '../screens/MenuScreen';
 import NotificationsScreen   from '../screens/NotificationsScreen';
+import CategoryManagementScreen from '../screens/CategoryManagementScreen';
 
 const Stack = createStackNavigator();
 const Tab   = createBottomTabNavigator();
@@ -370,6 +371,11 @@ const AppNavigator = () => {
             <Stack.Screen
               name="Notifications"
               component={NotificationsScreen}
+              options={{ presentation: 'modal' }}
+            />
+            <Stack.Screen
+              name="Categories"
+              component={CategoryManagementScreen}
               options={{ presentation: 'modal' }}
             />
           </>

@@ -219,20 +219,16 @@ export default function TransactionsListScreen({ navigation, route }) {
     });
     LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
     setExpenses(data);
-  }, [user?.id, search, startDate, endDate]);
 
-  useFocusEffect(useCallback(() => { loadData(); }, [loadData]));
-
-  // Pull categories for dropdown
-  useEffect(() => {
-    if (!user) return;
     const rows  = getCategoriesForUser(user.id);
     const items = [
       { label: 'All Categories', value: 'All', rawIcon: '🏷️', rawColor: TEXT_MUTED },
       ...rows.map(c => ({ label: c.name, value: c.id, rawIcon: c.icon, rawColor: c.color }))
     ];
     setCatItems(items);
-  }, [user]);
+  }, [user?.id, search, startDate, endDate]);
+
+  useFocusEffect(useCallback(() => { loadData(); }, [loadData]));
 
   // Animate list when in-memory filters change
   useEffect(() => {

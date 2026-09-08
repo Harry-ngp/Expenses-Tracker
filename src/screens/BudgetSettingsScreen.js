@@ -1,5 +1,16 @@
 import React, { useState, useCallback, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, TextInput, TouchableOpacity, Alert, RefreshControl } from 'react-native';
+import {
+  View,
+  Text,
+  StyleSheet,
+  ScrollView,
+  TextInput,
+  TouchableOpacity,
+  Alert,
+  RefreshControl,
+  KeyboardAvoidingView,
+  Platform,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect, useNavigation, useRoute } from '@react-navigation/native';
 import DropDownPicker from 'react-native-dropdown-picker';
@@ -195,85 +206,102 @@ export default function BudgetSettingsScreen() {
 
   return (
     <SafeAreaView style={[styles.safeArea, { backgroundColor: colors.bg }]} edges={['top']}>
-      <View style={[styles.header, { borderBottomColor: colors.border }]}>
-        <TouchableOpacity onPress={() => navigation.goBack()} style={{ paddingRight: SPACING.md }}>
-          <Text style={{ fontSize: 24, color: colors.textPrimary }}>←</Text>
-        </TouchableOpacity>
-        <Text style={[styles.title, { color: colors.textPrimary }]}>Budget Settings</Text>
-      </View>
-      <ScrollView
-        contentContainerStyle={styles.content}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />}
+      <KeyboardAvoidingView
+        style={{ flex: 1 }}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
-        {/* Month Selector */}
-        <View style={styles.monthPickerWrap}>
-          <Text style={[styles.monthPickerLabel, { color: colors.textSecondary }]}>SELECT MONTH TO CONFIGURE</Text>
-          <DropDownPicker
-            open={monthDropOpen}
-            value={selectedMonth}
-            items={monthItems}
-            setOpen={setMonthDropOpen}
-            setValue={setSelectedMonth}
-            setItems={setMonthItems}
-            style={[styles.dropdown, { backgroundColor: colors.bgCard, borderColor: colors.border }]}
-            textStyle={[styles.dropdownText, { color: colors.textPrimary }]}
-            dropDownContainerStyle={[styles.dropdownList, { backgroundColor: colors.bgCard, borderColor: colors.border }]}
-            arrowIconStyle={{ tintColor: colors.textPrimary }}
-            listMode="MODAL"
-            modalProps={{ animationType: 'fade' }}
-            modalTitle="Select Month"
-          />
+        <View style={[styles.header, { borderBottomColor: colors.border }]}>
+          <TouchableOpacity onPress={() => navigation.goBack()} style={{ paddingRight: SPACING.md }}>
+            <Text style={{ fontSize: 24, color: colors.textPrimary }}>←</Text>
+          </TouchableOpacity>
+          <Text style={[styles.title, { color: colors.textPrimary }]}>Budget Settings</Text>
         </View>
-
-        {/* Overall Monthly Budget */}
-        <Text style={[styles.sectionTitle, { color: colors.textSecondary }]}>
-          Overall Budget for {getMonthDisplay(selectedMonth)}
-        </Text>
-        <View style={[styles.card, { backgroundColor: colors.bgCard, borderColor: colors.border }]}>
-          <Text style={[styles.cardDesc, { color: colors.textSecondary }]}>
-            Set the total spending budget specifically for {getMonthDisplay(selectedMonth)}.
-          </Text>
-          <View style={styles.inputRow}>
-            <Text style={[styles.currency, { color: colors.textMuted }]}>₹</Text>
-            <TextInput
-              style={[styles.input, { color: colors.textPrimary, backgroundColor: colors.bgInput, borderColor: colors.border }]}
-              value={monthlyBudget}
-              onChangeText={setMonthlyBudgetInput}
-              keyboardType="numeric"
-              placeholder="0.00"
-              placeholderTextColor={colors.textMuted}
+        <ScrollView
+          contentContainerStyle={[styles.content, { paddingBottom: 380 }]}
+          keyboardShouldPersistTaps="handled"
+          automaticallyAdjustKeyboardInsets={true}
+          showsVerticalScrollIndicator={false}
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />}
+        >
+          {/* Month Selector */}
+          <View style={styles.monthPickerWrap}>
+            <Text style={[styles.monthPickerLabel, { color: colors.textSecondary }]}>SELECT MONTH TO CONFIGURE</Text>
+            <DropDownPicker
+              open={monthDropOpen}
+              value={selectedMonth}
+              items={monthItems}
+              setOpen={setMonthDropOpen}
+              setValue={setSelectedMonth}
+              setItems={setMonthItems}
+              style={[styles.dropdown, { backgroundColor: colors.bgCard, borderColor: colors.border }]}
+              textStyle={[styles.dropdownText, { color: colors.textPrimary }]}
+              dropDownContainerStyle={[styles.dropdownList, { backgroundColor: colors.bgCard, borderColor: colors.border }]}
+              arrowIconStyle={{ tintColor: colors.textPrimary }}
+              listMode="MODAL"
+              modalProps={{ animationType: 'fade' }}
+              modalTitle="Select Month"
             />
-            <TouchableOpacity style={[styles.btn, { backgroundColor: colors.primary }]} onPress={handleUpdateMonthly}>
-              <Text style={styles.btnText}>Save</Text>
+          </View>
+
+          {/* Overall Monthly Budget */}
+          <Text style={[styles.sectionTitle, { color: colors.textSecondary }]}>
+            Overall Budget for {getMonthDisplay(selectedMonth)}
+          </Text>
+          <View style={[styles.card, { backgroundColor: colors.bgCard, borderColor: colors.border }]}>
+            <Text style={[styles.cardDesc, { color: colors.textSecondary }]}>
+              Set the total spending budget specifically for {getMonthDisplay(selectedMonth)}.
+            </Text>
+            <View style={styles.inputRow}>
+              <Text style={[styles.currency, { color: colors.textMuted }]}>₹</Text>
+              <TextInput
+                style={[styles.input, { color: colors.textPrimary, backgroundColor: colors.bgInput, borderColor: colors.border }]}
+                value={monthlyBudget}
+                onChangeText={setMonthlyBudgetInput}
+                keyboardType="numeric"
+                placeholder="0.00"
+                placeholderTextColor={colors.textMuted}
+              />
+              <TouchableOpacity style={[styles.btn, { backgroundColor: colors.primary }]} onPress={handleUpdateMonthly}>
+                <Text style={styles.btnText}>Save</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+
+          {/* Category Budgets */}
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 24, marginBottom: 6 }}>
+            <Text style={[styles.sectionTitle, { color: colors.textSecondary, marginTop: 0, marginBottom: 0 }]}>
+              Category Limits ({getMonthDisplay(selectedMonth)})
+            </Text>
+            <TouchableOpacity
+              onPress={() => navigation.navigate('Categories')}
+              style={{ flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 10, paddingVertical: 5, backgroundColor: colors.primary + '18', borderRadius: RADIUS.full }}
+              activeOpacity={0.7}
+            >
+              <Text style={{ fontFamily: FONTS.bold, fontSize: 12, color: colors.primary }}>+ Manage Categories</Text>
             </TouchableOpacity>
           </View>
-        </View>
+          <Text style={[styles.subNote, { color: colors.textMuted }]}>
+            You can set different limits for each category, or leave them empty if you don't want a limit.
+          </Text>
 
-        {/* Category Budgets */}
-        <Text style={[styles.sectionTitle, { color: colors.textSecondary }]}>
-          Category Limits for {getMonthDisplay(selectedMonth)} (Optional)
-        </Text>
-        <Text style={[styles.subNote, { color: colors.textMuted }]}>
-          You can set different limits for each category, or leave them empty if you don't want a limit.
-        </Text>
+          {categories.map(cat => {
+            const spent = categoryTotals[cat.id] || 0;
+            const limit = cat.budget || 0;
 
-        {categories.map(cat => {
-          const spent = categoryTotals[cat.id] || 0;
-          const limit = cat.budget || 0;
-
-          return (
-            <CategoryBudgetCard
-              key={cat.id}
-              cat={cat}
-              spent={spent}
-              limit={limit}
-              colors={colors}
-              onUpdate={handleUpdateCategoryBudget}
-              onRemove={handleRemoveCategoryBudget}
-            />
-          );
-        })}
-      </ScrollView>
+            return (
+              <CategoryBudgetCard
+                key={cat.id}
+                cat={cat}
+                spent={spent}
+                limit={limit}
+                colors={colors}
+                onUpdate={handleUpdateCategoryBudget}
+                onRemove={handleRemoveCategoryBudget}
+              />
+            );
+          })}
+        </ScrollView>
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }

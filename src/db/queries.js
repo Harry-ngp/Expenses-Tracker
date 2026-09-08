@@ -238,16 +238,46 @@ export const processRecurringExpenses = (userId) => {
 export const getCategoriesForUser = (userId) => {
   const db = getDb();
   return db.getAllSync(
-    'SELECT * FROM categories WHERE user_id IS NULL OR user_id = ? ORDER BY id ASC;',
+    `SELECT * FROM categories 
+     WHERE user_id IS NULL OR user_id = ? 
+     ORDER BY 
+       CASE WHEN id = 10 OR LOWER(name) = 'other' THEN 1 ELSE 0 END ASC,
+       sort_order ASC, 
+       id ASC;`,
     [userId]
+  );
+};
+
+export const getCategoriesWithStats = (userId) => {
+  const db = getDb();
+  return db.getAllSync(
+    `SELECT c.*, COUNT(e.id) as expense_count
+     FROM categories c
+     LEFT JOIN expenses e ON c.id = e.category_id AND e.user_id = ?
+     WHERE c.user_id IS NULL OR c.user_id = ?
+     GROUP BY c.id
+     ORDER BY 
+       CASE WHEN c.id = 10 OR LOWER(c.name) = 'other' THEN 1 ELSE 0 END ASC,
+       c.sort_order ASC, 
+       c.id ASC;`,
+    [userId, userId]
   );
 };
 
 export const addCategory = (userId, name, icon, color) => {
   const db = getDb();
+  const maxRow = db.getFirstSync(
+    `SELECT MAX(sort_order) as max_sort 
+     FROM categories 
+     WHERE (user_id IS NULL OR user_id = ?) 
+       AND id != 10 AND LOWER(name) != 'other';`,
+    [userId]
+  );
+  const nextSort = (maxRow?.max_sort !== null && maxRow?.max_sort !== undefined ? maxRow.max_sort : 0) + 1;
+
   const result = db.runSync(
-    'INSERT INTO categories (name, icon, color, user_id) VALUES (?, ?, ?, ?);',
-    [name, icon, color, userId]
+    'INSERT INTO categories (name, icon, color, user_id, sort_order) VALUES (?, ?, ?, ?, ?);',
+    [name.trim(), icon || '📦', color || '#6B7280', userId, nextSort]
   );
   return result.lastInsertRowId;
 };
@@ -256,8 +286,60 @@ export const updateCategory = (categoryId, name, icon, color) => {
   const db = getDb();
   db.runSync(
     'UPDATE categories SET name = ?, icon = ?, color = ? WHERE id = ?;',
-    [name, icon, color, categoryId]
+    [name.trim(), icon || '📦', color || '#6B7280', categoryId]
   );
+};
+
+export const updateCategoriesOrder = (userId, categoryIds) => {
+  const db = getDb();
+  db.withTransactionSync(() => {
+    categoryIds.forEach((catId, index) => {
+      db.runSync(
+        'UPDATE categories SET sort_order = ? WHERE id = ?;',
+        [index, catId]
+      );
+    });
+  });
+};
+
+export const deleteCategorySafe = (userId, categoryId) => {
+  const db = getDb();
+  db.withTransactionSync(() => {
+    // Determine fallback category (Other, id 10)
+    const fallbackRow = db.getFirstSync("SELECT id FROM categories WHERE id = 10 OR name = 'Other' LIMIT 1;");
+    const fallbackId = fallbackRow?.id || 10;
+
+    // 1. Reassign expenses to fallback category so no transactions are lost
+    db.runSync(
+      'UPDATE expenses SET category_id = ? WHERE category_id = ? AND user_id = ?;',
+      [fallbackId, categoryId, userId]
+    );
+
+    // 2. Remove category limits from monthly_budgets_json across all months
+    try {
+      const budgets = getMonthlyBudgetsJson(userId);
+      let changed = false;
+      for (const monthKey in budgets) {
+        if (budgets[monthKey]?.categories && budgets[monthKey].categories[categoryId] !== undefined) {
+          delete budgets[monthKey].categories[categoryId];
+          changed = true;
+        }
+      }
+      if (changed) {
+        saveMonthlyBudgetsJson(userId, budgets);
+      }
+    } catch (e) {
+      console.warn('Failed to clean category from monthly budgets:', e);
+    }
+
+    // 3. Delete from legacy category_budgets if present
+    try {
+      db.runSync('DELETE FROM category_budgets WHERE category_id = ? AND user_id = ?;', [categoryId, userId]);
+    } catch (e) {}
+
+    // 4. Delete category
+    db.runSync('DELETE FROM categories WHERE id = ?;', [categoryId]);
+  });
 };
 
 export const deleteCategory = (categoryId) => {

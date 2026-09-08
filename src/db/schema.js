@@ -49,12 +49,19 @@ export const initializeDatabase = () => {
       icon  TEXT,
       color TEXT,
       user_id INTEGER,
+      sort_order INTEGER DEFAULT 0,
       FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
     );
   `);
 
   try {
     db.execSync("ALTER TABLE categories ADD COLUMN user_id INTEGER REFERENCES users(id) ON DELETE CASCADE;");
+  } catch (e) {
+    // Column might already exist
+  }
+
+  try {
+    db.execSync("ALTER TABLE categories ADD COLUMN sort_order INTEGER DEFAULT 0;");
   } catch (e) {
     // Column might already exist
   }

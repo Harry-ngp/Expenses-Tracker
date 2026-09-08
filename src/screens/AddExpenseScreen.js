@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity, StyleSheet,
   KeyboardAvoidingView, Platform, Alert, ActivityIndicator,
@@ -6,8 +6,9 @@ import {
   Keyboard, Dimensions,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useFocusEffect } from '@react-navigation/native';
 import DateTimePicker from '@react-native-community/datetimepicker';
-import { ArrowLeft, ChevronDown, Check, Calendar, FileText, Tag } from 'lucide-react-native';
+import { ArrowLeft, ChevronDown, Check, Calendar, FileText, Tag, Plus } from 'lucide-react-native';
 import { FONTS } from '../constants/theme';
 import { useAuth } from '../context/AuthContext';
 import { useNotifications } from '../context/NotificationContext';
@@ -159,7 +160,7 @@ function PhonePeSuccessOverlay({ visible, onDone }) {
 // ──────────────────────────────────────────────
 // Custom Animated Dropdown (Bottom Sheet)
 // ──────────────────────────────────────────────
-function Dropdown({ label, value, items, onChange, placeholder, leftIcon }) {
+function Dropdown({ label, value, items, onChange, placeholder, leftIcon, onAddNew, addNewLabel }) {
   const [open, setOpen]   = useState(false);
   const chevron = useRef(new Animated.Value(0)).current;
   const overlay = useRef(new Animated.Value(0)).current;
@@ -214,6 +215,20 @@ function Dropdown({ label, value, items, onChange, placeholder, leftIcon }) {
                 showsVerticalScrollIndicator={false}
                 nestedScrollEnabled={true}
                 contentContainerStyle={{ paddingBottom: 50 }}
+                ListFooterComponent={onAddNew ? (
+                  <TouchableOpacity
+                    style={[styles.sheetRow, { borderTopWidth: 1, borderTopColor: '#F0F1F5', marginTop: 8, justifyContent: 'center', backgroundColor: BRAND + '12', borderRadius: 12 }]}
+                    onPress={() => {
+                      closeSheet();
+                      onAddNew();
+                    }}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={{ fontFamily: FONTS.bold, fontSize: 14, color: BRAND }}>
+                      {addNewLabel || '+ Manage Categories'}
+                    </Text>
+                  </TouchableOpacity>
+                ) : null}
                 renderItem={({ item }) => {
                   const sel = item.value === value;
                   return (
@@ -300,13 +315,24 @@ export default function AddExpenseScreen({ navigation, route }) {
 
 
 
-  useEffect(() => {
+  const loadCategories = useCallback(() => {
     if (!user) return;
     const rows  = getCategoriesForUser(user.id);
     const items = rows.map(c => ({ label: c.name, value: c.id, rawIcon: c.icon, rawColor: c.color }));
     setCatItems(items);
-    if (!isEditing && items.length > 0) setCategoryId(items[0].value);
-  }, [user]);
+    if (!isEditing && items.length > 0) {
+      setCategoryId(prev => {
+        const exists = items.some(i => i.value === prev);
+        return exists ? prev : items[0].value;
+      });
+    }
+  }, [user, isEditing]);
+
+  useFocusEffect(
+    useCallback(() => {
+      loadCategories();
+    }, [loadCategories])
+  );
 
   const handleSave = async () => {
     if (!amount || isNaN(Number(amount)) || Number(amount) <= 0) {

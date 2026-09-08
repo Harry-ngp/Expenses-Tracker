@@ -127,7 +127,7 @@ export default function MenuScreen() {
           <View style={styles.divider} />
           <MenuRow
             icon={Tag} iconColor="#F59E0B" label="Categories"
-            onPress={() => Alert.alert('Coming Soon', 'Category management coming soon.')}
+            onPress={() => navigation.navigate('Categories')}
           />
           <View style={styles.divider} />
           <MenuRow
