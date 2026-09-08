@@ -483,3 +483,111 @@ export const deleteCategoryBudget = (userId, categoryId, month) => {
   const db = getDb();
   db.runSync('DELETE FROM category_budgets WHERE user_id = ? AND category_id = ?;', [userId, categoryId]);
 };
+
+// ═══════════════════════════════════════════════════════════════
+//  PAYMENT METHODS QUERIES
+// ═══════════════════════════════════════════════════════════════
+
+export const getPaymentMethodsForUser = (userId, { excludeOther = false } = {}) => {
+  const db = getDb();
+  let query = `
+    SELECT * FROM payment_methods 
+    WHERE (user_id IS NULL OR user_id = ?)
+  `;
+  const params = [userId];
+
+  if (excludeOther) {
+    query += ` AND LOWER(name) != 'other'`;
+  }
+
+  query += `
+    ORDER BY 
+      CASE WHEN LOWER(name) = 'other' THEN 1 ELSE 0 END ASC,
+      sort_order ASC, 
+      id ASC;
+  `;
+  return db.getAllSync(query, params);
+};
+
+export const getPaymentMethodsWithStats = (userId) => {
+  const db = getDb();
+  return db.getAllSync(
+    `SELECT pm.*, COUNT(e.id) as expense_count
+     FROM payment_methods pm
+     LEFT JOIN expenses e ON LOWER(e.payment_method) = LOWER(pm.name) AND e.user_id = ?
+     WHERE pm.user_id IS NULL OR pm.user_id = ?
+     GROUP BY pm.id
+     ORDER BY 
+       CASE WHEN LOWER(pm.name) = 'other' THEN 1 ELSE 0 END ASC,
+       pm.sort_order ASC, 
+       pm.id ASC;`,
+    [userId, userId]
+  );
+};
+
+export const addPaymentMethod = (userId, name, icon, color) => {
+  const db = getDb();
+  const maxRow = db.getFirstSync(
+    `SELECT MAX(sort_order) as max_sort 
+     FROM payment_methods 
+     WHERE (user_id IS NULL OR user_id = ?) 
+       AND LOWER(name) != 'other';`,
+    [userId]
+  );
+  const nextSort = (maxRow?.max_sort !== null && maxRow?.max_sort !== undefined ? maxRow.max_sort : 0) + 1;
+
+  const result = db.runSync(
+    'INSERT INTO payment_methods (name, icon, color, user_id, sort_order) VALUES (?, ?, ?, ?, ?);',
+    [name.trim(), icon || '💳', color || '#3B82F6', userId, nextSort]
+  );
+  return result.lastInsertRowId;
+};
+
+export const updatePaymentMethod = (methodId, name, icon, color) => {
+  const db = getDb();
+  const oldMethod = db.getFirstSync('SELECT name FROM payment_methods WHERE id = ?;', [methodId]);
+  const trimmedName = name.trim();
+
+  db.runSync(
+    'UPDATE payment_methods SET name = ?, icon = ?, color = ? WHERE id = ?;',
+    [trimmedName, icon || '💳', color || '#3B82F6', methodId]
+  );
+
+  // If name changed, update existing expenses using this payment method
+  if (oldMethod && oldMethod.name !== trimmedName) {
+    db.runSync(
+      'UPDATE expenses SET payment_method = ? WHERE payment_method = ?;',
+      [trimmedName, oldMethod.name]
+    );
+  }
+};
+
+export const updatePaymentMethodsOrder = (userId, methodIds) => {
+  const db = getDb();
+  db.withTransactionSync(() => {
+    methodIds.forEach((methodId, index) => {
+      db.runSync(
+        'UPDATE payment_methods SET sort_order = ? WHERE id = ?;',
+        [index, methodId]
+      );
+    });
+  });
+};
+
+export const deletePaymentMethodSafe = (userId, methodId) => {
+  const db = getDb();
+  const target = db.getFirstSync('SELECT name FROM payment_methods WHERE id = ?;', [methodId]);
+  if (!target) return;
+
+  db.withTransactionSync(() => {
+    // 1. Reassign expenses using this payment method to 'Other'
+    db.runSync(
+      'UPDATE expenses SET payment_method = ? WHERE payment_method = ? AND user_id = ?;',
+      ['Other', target.name, userId]
+    );
+
+    // 2. Delete payment method
+    db.runSync('DELETE FROM payment_methods WHERE id = ?;', [methodId]);
+  });
+};
+

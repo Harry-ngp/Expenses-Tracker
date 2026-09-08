@@ -58,6 +58,16 @@ export const getExportPayload = (user) => {
        id ASC;`,
     [user.id]
   );
+
+  const paymentMethods = db.getAllSync(
+    `SELECT id, name, icon, color, user_id, sort_order FROM payment_methods 
+     WHERE user_id = ? OR user_id IS NULL
+     ORDER BY 
+       CASE WHEN LOWER(name) = 'other' THEN 1 ELSE 0 END ASC,
+       sort_order ASC, 
+       id ASC;`,
+    [user.id]
+  );
   
   const monthlyBudgets = getMonthlyBudgetsJson(user.id);
   
@@ -71,9 +81,11 @@ export const getExportPayload = (user) => {
     },
     monthlyBudgets,
     categories,
+    paymentMethods,
     expenses,
   };
 };
+
 
 export const syncUp = async (user) => {
   if (!user || !user.email) return { success: false, message: 'No user session' };
@@ -154,6 +166,7 @@ export const syncDown = async (user) => {
       db.runSync('DELETE FROM expenses WHERE user_id = ?', [user.id]);
       db.runSync('DELETE FROM category_budgets WHERE user_id = ?', [user.id]);
       db.runSync('DELETE FROM categories WHERE user_id = ?', [user.id]);
+      db.runSync('DELETE FROM payment_methods WHERE user_id = ?', [user.id]);
       
       // Restore month-wise budgets
       if (backupData.monthlyBudgets && typeof backupData.monthlyBudgets === 'object') {
@@ -170,6 +183,16 @@ export const syncDown = async (user) => {
           );
         }
       }
+
+      if (Array.isArray(backupData.paymentMethods)) {
+        for (const pm of backupData.paymentMethods) {
+          db.runSync(
+            'INSERT OR REPLACE INTO payment_methods (id, user_id, name, icon, color, sort_order) VALUES (?, ?, ?, ?, ?, ?)',
+            [pm.id, pm.user_id || user.id, pm.name, pm.icon, pm.color, pm.sort_order ?? 0]
+          );
+        }
+      }
+
       
       if (Array.isArray(backupData.expenses)) {
         for (const exp of backupData.expenses) {

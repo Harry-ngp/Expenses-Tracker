@@ -117,6 +117,19 @@ export const initializeDatabase = () => {
     );
   `);
 
+  // ── payment_methods table ────────────────────────────────────
+  db.execSync(`
+    CREATE TABLE IF NOT EXISTS payment_methods (
+      id         INTEGER PRIMARY KEY AUTOINCREMENT,
+      name       TEXT    NOT NULL,
+      icon       TEXT,
+      color      TEXT,
+      user_id    INTEGER,
+      sort_order INTEGER DEFAULT 0,
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    );
+  `);
+
   // Seed categories if empty
   const count = db.getFirstSync('SELECT COUNT(*) as cnt FROM categories;');
   if (count.cnt === 0) {
@@ -127,4 +140,23 @@ export const initializeDatabase = () => {
       );
     }
   }
+
+  // Seed default payment methods if empty
+  const pmCount = db.getFirstSync('SELECT COUNT(*) as cnt FROM payment_methods;');
+  if (pmCount.cnt === 0) {
+    const DEFAULT_PAYMENT_METHODS = [
+      { id: 1, name: 'Cash',        icon: '💵', color: '#10B981', sort_order: 0 },
+      { id: 2, name: 'UPI',         icon: '📱', color: '#8862F8', sort_order: 1 },
+      { id: 3, name: 'Card',        icon: '💳', color: '#3B82F6', sort_order: 2 },
+      { id: 4, name: 'Net Banking', icon: '🏦', color: '#F59E0B', sort_order: 3 },
+      { id: 5, name: 'Other',       icon: '📦', color: '#6B7280', sort_order: 999 },
+    ];
+    for (const pm of DEFAULT_PAYMENT_METHODS) {
+      db.runSync(
+        'INSERT OR IGNORE INTO payment_methods (id, name, icon, color, sort_order) VALUES (?, ?, ?, ?, ?);',
+        [pm.id, pm.name, pm.icon, pm.color, pm.sort_order]
+      );
+    }
+  }
 };
+

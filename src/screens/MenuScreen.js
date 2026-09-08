@@ -132,8 +132,9 @@ export default function MenuScreen() {
           <View style={styles.divider} />
           <MenuRow
             icon={CreditCard} iconColor="#3F8CFF" label="Payment Methods"
-            onPress={() => Alert.alert('Coming Soon', 'Payment method management coming soon.')}
+            onPress={() => navigation.navigate('PaymentMethods')}
           />
+
           <View style={styles.divider} />
           <MenuRow
             icon={HardDrive} iconColor="#6B7280" label="Backup & Restore"

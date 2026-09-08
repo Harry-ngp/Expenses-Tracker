@@ -29,6 +29,7 @@ import CalendarScreen        from '../screens/CalendarScreen';
 import MenuScreen            from '../screens/MenuScreen';
 import NotificationsScreen   from '../screens/NotificationsScreen';
 import CategoryManagementScreen from '../screens/CategoryManagementScreen';
+import PaymentMethodsScreen    from '../screens/PaymentMethodsScreen';
 
 const Stack = createStackNavigator();
 const Tab   = createBottomTabNavigator();
@@ -378,7 +379,13 @@ const AppNavigator = () => {
               component={CategoryManagementScreen}
               options={{ presentation: 'modal' }}
             />
+            <Stack.Screen
+              name="PaymentMethods"
+              component={PaymentMethodsScreen}
+              options={{ presentation: 'modal' }}
+            />
           </>
+
         )}
       </Stack.Navigator>
     </NavigationContainer>

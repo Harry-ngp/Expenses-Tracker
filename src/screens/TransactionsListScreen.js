@@ -11,7 +11,7 @@ import DateTimePicker from '@react-native-community/datetimepicker';
 
 import { FONTS, RADIUS, SHADOWS } from '../constants/theme';
 import { useAuth } from '../context/AuthContext';
-import { getExpenses, deleteExpense, getCategoriesForUser } from '../db/queries';
+import { getExpenses, deleteExpense, getCategoriesForUser, getPaymentMethodsForUser } from '../db/queries';
 import { syncUp } from '../utils/syncManager';
 import ExpenseCard from '../components/ExpenseCard';
 import AnimatedBackground from '../components/AnimatedBackground';
@@ -53,13 +53,14 @@ const getDefaultDates = () => {
   return { start, end };
 };
 
-// ── PAY_ITEMS constant ────────────────────────────────────────────
-const PAY_ITEMS = [
+// ── DEFAULT_PAY_ITEMS constant ──────────────────────────────────────
+const DEFAULT_PAY_ITEMS = [
   { label: 'All Payments', value: 'All',         rawIcon: '💳', rawColor: TEXT_MUTED },
   { label: 'Cash',         value: 'Cash',         rawIcon: '💵' },
   { label: 'UPI',          value: 'UPI',          rawIcon: '📱' },
   { label: 'Card',         value: 'Card',         rawIcon: '💳' },
   { label: 'Net Banking',  value: 'Net Banking',  rawIcon: '🏦' },
+  { label: 'Other',        value: 'Other',        rawIcon: '📦', rawColor: '#6B7280' },
 ];
 
 // ── Custom Bottom-Sheet Dropdown ──────────────────────────────────
@@ -226,6 +227,13 @@ export default function TransactionsListScreen({ navigation, route }) {
       ...rows.map(c => ({ label: c.name, value: c.id, rawIcon: c.icon, rawColor: c.color }))
     ];
     setCatItems(items);
+
+    const pmRows = getPaymentMethodsForUser(user.id);
+    const pItems = [
+      { label: 'All Payments', value: 'All', rawIcon: '💳', rawColor: TEXT_MUTED },
+      ...pmRows.map(m => ({ label: m.name, value: m.name, rawIcon: m.icon || '💳', rawColor: m.color || '#3B82F6' }))
+    ];
+    setPayItems(pItems);
   }, [user?.id, search, startDate, endDate]);
 
   useFocusEffect(useCallback(() => { loadData(); }, [loadData]));
@@ -272,8 +280,10 @@ export default function TransactionsListScreen({ navigation, route }) {
   };
   const handleEdit   = (expense) => navigation.navigate('AddExpense', { expense });
 
+  const [payItems, setPayItems] = useState(DEFAULT_PAY_ITEMS);
+
   const selCat = catItems.find(c => c.value === categoryId);
-  const selPay = PAY_ITEMS.find(p => p.value === payMethod);
+  const selPay = payItems.find(p => p.value === payMethod);
 
   // ── in-memory second filter pass ─────────────────────────────
   const sections = useMemo(() => {
@@ -357,7 +367,7 @@ export default function TransactionsListScreen({ navigation, route }) {
           <Dropdown
             label="Payment"
             value={payMethod}
-            items={PAY_ITEMS}
+            items={payItems}
             onChange={setPayMethod}
             style={styles.filterCellRight}
             leftIcon={

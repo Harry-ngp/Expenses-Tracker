@@ -39,7 +39,18 @@ export const exportUserDataBackup = async (user) => {
       [user.id]
     );
 
-    // 3. Fetch monthly budgets JSON
+    // 3. Fetch custom payment methods
+    const paymentMethods = db.getAllSync(
+      `SELECT id, name, icon, color, sort_order FROM payment_methods 
+       WHERE user_id = ? OR user_id IS NULL
+       ORDER BY 
+         CASE WHEN LOWER(name) = 'other' THEN 1 ELSE 0 END ASC,
+         sort_order ASC, 
+         id ASC;`,
+      [user.id]
+    );
+
+    // 4. Fetch monthly budgets JSON
     const monthlyBudgets = getMonthlyBudgetsJson(user.id);
 
     const backupPayload = {
@@ -52,6 +63,7 @@ export const exportUserDataBackup = async (user) => {
       },
       monthlyBudgets,
       categories,
+      paymentMethods,
       expenses,
     };
 
@@ -142,6 +154,16 @@ export const importUserDataBackup = async (user, onSuccess) => {
           backupData.user.monthly_budget,
           user.id,
         ]);
+      }
+
+      // Import payment methods if provided
+      if (Array.isArray(backupData.paymentMethods)) {
+        for (const pm of backupData.paymentMethods) {
+          db.runSync(
+            'INSERT OR REPLACE INTO payment_methods (id, user_id, name, icon, color, sort_order) VALUES (?, ?, ?, ?, ?, ?)',
+            [pm.id, user.id, pm.name, pm.icon, pm.color, pm.sort_order ?? 0]
+          );
+        }
       }
 
       // Import expenses

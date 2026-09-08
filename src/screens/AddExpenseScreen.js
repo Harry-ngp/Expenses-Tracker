@@ -12,7 +12,7 @@ import { ArrowLeft, ChevronDown, Check, Calendar, FileText, Tag, Plus } from 'lu
 import { FONTS } from '../constants/theme';
 import { useAuth } from '../context/AuthContext';
 import { useNotifications } from '../context/NotificationContext';
-import { addExpense, updateExpense, getCategoriesForUser, getMonthlyTotal, getMonthlyBudget } from '../db/queries';
+import { addExpense, updateExpense, getCategoriesForUser, getPaymentMethodsForUser, getMonthlyTotal, getMonthlyBudget } from '../db/queries';
 import { formatINR } from '../utils/dateHelpers';
 import { syncUp } from '../utils/syncManager';
 import Svg, { Path, Circle } from 'react-native-svg';
@@ -306,14 +306,34 @@ export default function AddExpenseScreen({ navigation, route }) {
     return () => { showSub.remove(); hideSub.remove(); };
   }, [insets.bottom]);
 
-  const PAY_ITEMS = [
-    { label: 'Cash',        value: 'Cash',        rawIcon: '💵' },
-    { label: 'UPI',         value: 'UPI',         rawIcon: '📱' },
-    { label: 'Card',        value: 'Card',        rawIcon: '💳' },
-    { label: 'Net Banking', value: 'Net Banking', rawIcon: '🏦' },
-  ];
+  const [payItems,    setPayItems]    = useState([]);
 
-
+  const loadPaymentMethods = useCallback(() => {
+    if (!user) return;
+    try {
+      const rows = getPaymentMethodsForUser(user.id, { excludeOther: true });
+      if (rows && rows.length > 0) {
+        const items = rows.map(m => ({ label: m.name, value: m.name, rawIcon: m.icon || '💳', rawColor: m.color }));
+        setPayItems(items);
+        if (!isEditing) {
+          setPayMethod(prev => {
+            const exists = items.some(i => i.value === prev);
+            return exists ? prev : items[0].value;
+          });
+        }
+      } else {
+        const defaults = [
+          { label: 'Cash',        value: 'Cash',        rawIcon: '💵' },
+          { label: 'UPI',         value: 'UPI',         rawIcon: '📱' },
+          { label: 'Card',        value: 'Card',        rawIcon: '💳' },
+          { label: 'Net Banking', value: 'Net Banking', rawIcon: '🏦' },
+        ];
+        setPayItems(defaults);
+      }
+    } catch (e) {
+      console.error('Failed to load payment methods in AddExpense:', e);
+    }
+  }, [user, isEditing]);
 
   const loadCategories = useCallback(() => {
     if (!user) return;
@@ -331,7 +351,8 @@ export default function AddExpenseScreen({ navigation, route }) {
   useFocusEffect(
     useCallback(() => {
       loadCategories();
-    }, [loadCategories])
+      loadPaymentMethods();
+    }, [loadCategories, loadPaymentMethods])
   );
 
   const handleSave = async () => {
@@ -378,7 +399,7 @@ export default function AddExpenseScreen({ navigation, route }) {
   };
 
   const selCat = catItems.find(c => c.value === categoryId);
-  const selPay = PAY_ITEMS.find(p => p.value === payMethod);
+  const selPay = payItems.find(p => p.value === payMethod);
 
   return (
     <View style={styles.screen}>
@@ -460,11 +481,11 @@ export default function AddExpenseScreen({ navigation, route }) {
             <Dropdown
               label="Select Payment Method"
               value={payMethod}
-              items={PAY_ITEMS}
+              items={payItems}
               onChange={setPayMethod}
               placeholder="Choose payment method"
               leftIcon={
-                <View style={[styles.rowIcon, { backgroundColor: '#10B98120' }]}>
+                <View style={[styles.rowIcon, { backgroundColor: (selPay?.rawColor || '#10B981') + '20' }]}>
                   <Text style={{ fontSize: 15 }}>{selPay?.rawIcon || '💳'}</Text>
                 </View>
               }
