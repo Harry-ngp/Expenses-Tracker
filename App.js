@@ -1,14 +1,13 @@
+import 'react-native-gesture-handler';
 import React, { useEffect, useState } from 'react';
 import { View, ActivityIndicator, StyleSheet, LogBox } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
-import {
-  Poppins_500Medium,
-  Poppins_600SemiBold,
-  Poppins_700Bold,
-  Poppins_800ExtraBold,
-  useFonts,
-} from '@expo-google-fonts/poppins';
+import { useFonts } from 'expo-font';
+import { Poppins_500Medium } from '@expo-google-fonts/poppins/500Medium';
+import { Poppins_600SemiBold } from '@expo-google-fonts/poppins/600SemiBold';
+import { Poppins_700Bold } from '@expo-google-fonts/poppins/700Bold';
+import { Poppins_800ExtraBold } from '@expo-google-fonts/poppins/800ExtraBold';
 
 import { AuthProvider } from './src/context/AuthContext';
 import { ThemeProvider } from './src/context/ThemeContext';

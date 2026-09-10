@@ -18,10 +18,12 @@ LogBox.ignoreLogs(IGNORED_WARNINGS);
 
 const originalWarn = console.warn;
 console.warn = (...args) => {
-  const msg = args.map((a) => (typeof a === 'object' ? JSON.stringify(a) : String(a))).join(' ');
-  if (IGNORED_WARNINGS.some((w) => msg.includes(w))) {
-    return;
-  }
+  try {
+    const msg = args.map((a) => (typeof a === 'object' && a !== null ? JSON.stringify(a) : String(a))).join(' ');
+    if (IGNORED_WARNINGS.some((w) => msg.includes(w))) {
+      return;
+    }
+  } catch (_) {}
   originalWarn(...args);
 };
 
