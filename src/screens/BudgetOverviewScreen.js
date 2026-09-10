@@ -1,5 +1,5 @@
-import React, { useState, useCallback, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TouchableWithoutFeedback, RefreshControl, Animated as RNAnimated, LayoutAnimation, Platform, Image } from 'react-native';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TouchableWithoutFeedback, RefreshControl, Animated as RNAnimated, LayoutAnimation, Platform, Image, Modal, Dimensions } from 'react-native';
 import Animated, { useSharedValue, useAnimatedStyle, withRepeat, withTiming, Easing, withSpring, interpolate } from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
@@ -11,7 +11,6 @@ import { FONTS, SPACING, RADIUS, SHADOWS } from '../constants/theme';
 import { getCategoryBudgets, getCategoryTotals, getCategoriesForUser, getMonthlyTotal, getMonthlyBudget } from '../db/queries';
 import { formatINR, currentMonthStart, todayISO, currentMonthKey } from '../utils/dateHelpers';
 import { syncUp } from '../utils/syncManager';
-import DropDownPicker from 'react-native-dropdown-picker';
 import { LinearGradient } from 'expo-linear-gradient';
 import AnimatedBackground from '../components/AnimatedBackground';
 
@@ -55,6 +54,53 @@ export default function BudgetOverviewScreen() {
   
   const [monthDropOpen, setMonthDropOpen] = useState(false);
   const [monthItems, setMonthItems] = useState(generateMonthOptions());
+  const pillRef = useRef(null);
+  const [dropdownCoords, setDropdownCoords] = useState({ top: 140, right: 20, width: 130 });
+
+  const updateDropdownCoords = useCallback(() => {
+    if (pillRef.current) {
+      pillRef.current.measureInWindow((x, y, width, height) => {
+        if (width > 0 && height > 0) {
+          const windowWidth = Dimensions.get('window').width;
+          const calculatedRight = Math.max(windowWidth - (x + width), 16);
+          const calculatedTop = y + height + 4;
+          setDropdownCoords({
+            top: calculatedTop,
+            right: calculatedRight,
+            width: Math.max(width, 130),
+          });
+        }
+      });
+    }
+  }, []);
+
+  const onPillLayout = useCallback(() => {
+    updateDropdownCoords();
+  }, [updateDropdownCoords]);
+
+  const toggleDropdown = useCallback(() => {
+    if (monthDropOpen) {
+      setMonthDropOpen(false);
+      return;
+    }
+    if (pillRef.current) {
+      pillRef.current.measureInWindow((x, y, width, height) => {
+        if (width > 0 && height > 0) {
+          const windowWidth = Dimensions.get('window').width;
+          const calculatedRight = Math.max(windowWidth - (x + width), 16);
+          const calculatedTop = y + height + 4;
+          setDropdownCoords({
+            top: calculatedTop,
+            right: calculatedRight,
+            width: Math.max(width, 130),
+          });
+        }
+        setMonthDropOpen(true);
+      });
+    } else {
+      setMonthDropOpen(true);
+    }
+  }, [monthDropOpen]);
 
   const loadData = useCallback(() => {
     if (!user) return;
@@ -104,9 +150,11 @@ export default function BudgetOverviewScreen() {
 
   useFocusEffect(
     useCallback(() => { 
-      loadData(); 
-      // Reset flip when screen gains focus
+      // Always reset to current month when switching to this screen
+      setSelectedMonth(currentMonthKey());
+      setMonthDropOpen(false);
       isFlipped.value = 0;
+      loadData(); 
     }, [loadData, isFlipped])
   );
 
@@ -208,22 +256,21 @@ export default function BudgetOverviewScreen() {
                   <Text style={styles.budgetLabel}>Monthly Budget ✏️</Text>
                   <Text style={styles.budgetOfLabel}>of {formatINR(overallBudget)}</Text>
                 </TouchableOpacity>
-                <View style={styles.dropdownContainerWrapper}>
-                  <DropDownPicker
-                    open={monthDropOpen}
-                    value={selectedMonth}
-                    items={monthItems}
-                    setOpen={setMonthDropOpen}
-                    setValue={setSelectedMonth}
-                    setItems={setMonthItems}
-                    style={styles.dropdown}
-                    textStyle={styles.dropdownText}
-                    dropDownContainerStyle={styles.dropdownList}
-                    arrowIconStyle={styles.dropdownArrow}
-                    listMode="MODAL"
-                    modalProps={{ animationType: 'fade' }}
-                    modalTitle="Select Month"
-                  />
+                <View ref={pillRef} collapsable={false} onLayout={onPillLayout}>
+                  <TouchableOpacity
+                    style={styles.monthPillButton}
+                    onPress={toggleDropdown}
+                    activeOpacity={0.75}
+                  >
+                    <Text style={styles.monthPillText} numberOfLines={1}>
+                      {monthItems.find(m => m.value === selectedMonth)?.label || 'Month'}
+                    </Text>
+                    <ChevronDown
+                      stroke="#FFFFFF"
+                      size={14}
+                      style={{ transform: [{ rotate: monthDropOpen ? '180deg' : '0deg' }] }}
+                    />
+                  </TouchableOpacity>
                 </View>
               </View>
               
@@ -298,24 +345,25 @@ export default function BudgetOverviewScreen() {
             </Animated.View>
           </View>
         ) : (
-          <View style={[styles.setBudgetCard, { zIndex: 1000 }]}>
-            <View style={{ width: '100%', zIndex: 2000, marginBottom: 16 }}>
+          <View style={styles.setBudgetCard}>
+            <View style={{ width: '100%', marginBottom: 16 }}>
               <Text style={{ fontFamily: FONTS.semiBold, fontSize: FONTS.sizes.sm, color: TEXT_MUTED, marginBottom: 8 }}>Select Month</Text>
-              <DropDownPicker
-                open={monthDropOpen}
-                value={selectedMonth}
-                items={monthItems}
-                setOpen={setMonthDropOpen}
-                setValue={setSelectedMonth}
-                setItems={setMonthItems}
-                style={[styles.dropdown, { backgroundColor: '#F3F4F6', width: '100%' }]}
-                textStyle={styles.dropdownText}
-                dropDownContainerStyle={styles.dropdownList}
-                arrowIconStyle={styles.dropdownArrow}
-                listMode="MODAL"
-                modalProps={{ animationType: 'fade' }}
-                modalTitle="Select Month"
-              />
+              <View ref={pillRef} collapsable={false} onLayout={onPillLayout}>
+                <TouchableOpacity
+                  style={[styles.monthPillButton, { width: '100%', justifyContent: 'space-between', height: 42, borderRadius: RADIUS.md }]}
+                  onPress={toggleDropdown}
+                  activeOpacity={0.75}
+                >
+                  <Text style={[styles.monthPillText, { fontSize: 14 }]} numberOfLines={1}>
+                    {monthItems.find(m => m.value === selectedMonth)?.label || 'Month'}
+                  </Text>
+                  <ChevronDown
+                    stroke="#FFFFFF"
+                    size={16}
+                    style={{ transform: [{ rotate: monthDropOpen ? '180deg' : '0deg' }] }}
+                  />
+                </TouchableOpacity>
+              </View>
             </View>
             <TouchableOpacity 
               style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, width: '100%', paddingVertical: 14, backgroundColor: BRAND_PURPLE + '12', borderRadius: RADIUS.full }} 
@@ -391,6 +439,75 @@ export default function BudgetOverviewScreen() {
           </TouchableOpacity>
         </LinearGradient>
       </Animated.View>
+
+      {/* Month Dropdown Modal matching Dashboard */}
+      <Modal
+        visible={monthDropOpen}
+        transparent={true}
+        animationType="none"
+        onRequestClose={() => setMonthDropOpen(false)}
+        statusBarTranslucent={true}
+      >
+        <TouchableWithoutFeedback onPress={() => setMonthDropOpen(false)}>
+          <View style={StyleSheet.absoluteFill} />
+        </TouchableWithoutFeedback>
+
+        <View
+          style={[
+            styles.monthDropdownMenu,
+            {
+              top: dropdownCoords.top,
+              right: dropdownCoords.right,
+              width: dropdownCoords.width,
+            },
+          ]}
+        >
+          <LinearGradient
+            colors={[BRAND_PURPLE, '#8862F8']}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={styles.monthDropdownGradient}
+          >
+            <ScrollView
+              showsVerticalScrollIndicator={false}
+              bounces={true}
+              overScrollMode="always"
+              keyboardShouldPersistTaps="handled"
+              style={{ flex: 1 }}
+              contentContainerStyle={{ paddingVertical: 2 }}
+            >
+              {monthItems.map((item, index) => {
+                const isSelected = item.value === selectedMonth;
+                return (
+                  <TouchableOpacity
+                    key={item.value}
+                    style={[
+                      styles.monthDropdownItem,
+                      isSelected && styles.monthDropdownItemSelected,
+                      index > 0 && styles.monthDropdownItemBorder,
+                    ]}
+                    onPress={() => {
+                      setSelectedMonth(item.value);
+                      setMonthDropOpen(false);
+                    }}
+                    activeOpacity={0.65}
+                  >
+                    <Text
+                      style={[
+                        styles.monthDropdownItemText,
+                        isSelected && styles.monthDropdownItemTextSelected,
+                      ]}
+                      numberOfLines={1}
+                    >
+                      {item.label}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+          </LinearGradient>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -485,11 +602,68 @@ const styles = StyleSheet.create({
     marginTop: 14,
   },
 
-  dropdownContainerWrapper: { width: 130, zIndex: 5000 },
-  dropdown: { minHeight: 38, backgroundColor: '#F9FAFB', borderColor: '#E8EAF0', borderRadius: RADIUS.full, paddingHorizontal: 12 },
-  dropdownText: { fontFamily: FONTS.semiBold, fontSize: 13, color: TEXT_DARK },
-  dropdownList: { borderColor: '#E8EAF0', borderRadius: RADIUS.lg, zIndex: 6000, elevation: 6000 },
-  dropdownArrow: { width: 16, height: 16, tintColor: TEXT_MUTED },
+  monthPillButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: BRAND_PURPLE,
+    minHeight: 34,
+    borderRadius: 17,
+    paddingHorizontal: 12,
+    minWidth: 124,
+    shadowColor: BRAND_PURPLE,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  monthPillText: {
+    fontFamily: FONTS.semiBold,
+    fontSize: 13,
+    color: '#FFFFFF',
+    marginRight: 6,
+  },
+  monthDropdownMenu: {
+    position: 'absolute',
+    height: 140,
+    borderRadius: 14,
+    overflow: 'hidden',
+    zIndex: 9999,
+    elevation: 9999,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.35,
+    shadowRadius: 8,
+  },
+  monthDropdownGradient: {
+    flex: 1,
+    borderRadius: 14,
+    borderWidth: 1.5,
+    borderColor: 'rgba(255,255,255,0.4)',
+  },
+  monthDropdownItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    height: 34,
+    paddingHorizontal: 12,
+  },
+  monthDropdownItemSelected: {
+    backgroundColor: 'rgba(255,255,255,0.25)',
+  },
+  monthDropdownItemBorder: {
+    borderTopWidth: 0.5,
+    borderTopColor: 'rgba(255,255,255,0.18)',
+  },
+  monthDropdownItemText: {
+    fontFamily: FONTS.semiBold,
+    fontSize: 13,
+    color: 'rgba(255,255,255,0.9)',
+  },
+  monthDropdownItemTextSelected: {
+    color: '#FFFFFF',
+    fontFamily: FONTS.bold,
+  },
 
   setBudgetCard: {
     backgroundColor: '#FFF', borderRadius: RADIUS.xl, padding: 20,

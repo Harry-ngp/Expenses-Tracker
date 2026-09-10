@@ -179,6 +179,7 @@ const MainTabs = () => {
 
   return (
     <Tab.Navigator
+      detachInactiveScreens={false}
       screenOptions={({ route }) => ({
         // Render the shared header for every tab
         header: () => <AppHeader title={route.name === 'More' ? 'More' : route.name} route={route} />,
@@ -201,6 +202,13 @@ const MainTabs = () => {
           alignItems: 'center',
           justifyContent: 'center',
         },
+        tabBarButton: (props) => (
+          <TouchableOpacity
+            {...props}
+            activeOpacity={0.7}
+            delayPressIn={0}
+          />
+        ),
       })}
     >
     <Tab.Screen
@@ -474,7 +482,7 @@ const tabStyles = StyleSheet.create({
     backgroundColor: 'transparent',
   },
   iconBgActive: {
-    backgroundColor: '#FFF0F0', // Very light purple/red tint to match BRAND_PURPLE
+    backgroundColor: 'transparent',
   },
   label: {
     fontFamily: FONTS.medium,

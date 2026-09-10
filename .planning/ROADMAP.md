@@ -16,10 +16,15 @@
   - Standalone release APK crash resolution (removed legacy `expo-av`, initialized gesture handler).
   - APK size reduction (<30MB) via single-architecture `arm64-v8a` target, font tree-shaking, and R8 shrinking.
 
+- **Phase 5: Budget Screen & Navigation Polish** `[COMPLETED]`
+  - Replace legacy DropDownPicker on Budget screen with modern Dashboard-style floating pill dropdown.
+  - Reset Budget screen to current month automatically on screen focus/switch.
+  - Eliminate bottom tab navigation lag and remove Android dark grey ripple circle artifact.
+
 ## Milestone 1.1: Future Enhancements (Backlog)
-- **Phase 5: Recurring Transactions & Subscriptions** `[PLANNED]`
+- **Phase 6: Recurring Transactions & Subscriptions** `[PLANNED]`
   - Auto-scheduling recurring expenses (rent, utilities, subscriptions).
-- **Phase 6: Multi-Currency & Conversion** `[PLANNED]`
+- **Phase 7: Multi-Currency & Conversion** `[PLANNED]`
   - Support for multiple currencies with offline caching of exchange rates.
-- **Phase 7: Receipt Scanning (OCR)** `[PLANNED]`
+- **Phase 8: Receipt Scanning (OCR)** `[PLANNED]`
   - Camera integration and on-device text recognition to automatically parse expense amounts and dates.

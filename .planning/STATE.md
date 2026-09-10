@@ -2,7 +2,7 @@
 
 ## Current Status
 - **Milestone**: 1.0 (Core Feature Complete & Release Hardened)
-- **Active Focus**: Ready for release build (`eas build -p android --profile preview`) and transition to Milestone 1.1.
+- **Active Focus**: Milestone 1.0 complete with Phase 5 UI/UX Polish.
 - **Git Branch**: `Feature_vijay`
 
 ## Key Decisions & Architecture Log
@@ -11,8 +11,11 @@
 - **Static Add Expense Layout**: Avoided wrapping in `ScrollView`; calculated Android keyboard offset (`55px`) dynamically to keep the "Save Expense" button fully visible.
 - **Native Audio Removed**: Dropped `expo-av` due to SDK 57 crash; replaced with safe no-op functions in `src/utils/sounds.js`.
 - **Target Single Architecture**: Pinned `arm64-v8a` in `eas.json` to keep release APK size under ~24MB.
+- **Modern Dropdown Consistency**: Replaced legacy `DropDownPicker` in `BudgetOverviewScreen.js` with modern gradient pill button and floating modal menu matching `DashboardScreen.js`.
+- **Budget Auto-Reset**: Added `setSelectedMonth(currentMonthKey())` in `useFocusEffect` so returning to Budget screen resets view to the current month.
+- **Tab Navigation Performance**: Configured `tabBarButton` with `TouchableOpacity` (`delayPressIn: 0`, `activeOpacity: 0.7`) and `detachInactiveScreens: false` in `AppNavigator.js` to eliminate switching delay and remove Android dark grey ripple circles.
 
 ## Verification Status
 - `npx expo-doctor`: 21/21 checks passed.
-- `npx expo export --platform android`: Clean compilation, 47 assets (14 unused fonts stripped).
-- Codebase Map: All 7 documents generated under `.planning/codebase/`.
+- `npx expo export --platform android`: Clean compilation, 47 assets.
+- Codebase Map: All 7 documents up-to-date under `.planning/codebase/`.
