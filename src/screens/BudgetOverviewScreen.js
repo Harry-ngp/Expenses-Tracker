@@ -55,7 +55,26 @@ export default function BudgetOverviewScreen() {
   const [monthDropOpen, setMonthDropOpen] = useState(false);
   const [monthItems, setMonthItems] = useState(generateMonthOptions());
   const pillRef = useRef(null);
+  const dropScrollRef = useRef(null);
+  const DROPDOWN_ITEM_HEIGHT = 36;
   const [dropdownCoords, setDropdownCoords] = useState({ top: 140, right: 20, width: 130 });
+
+  const scrollToSelectedMonth = useCallback(() => {
+    const idx = monthItems.findIndex(m => m.value === selectedMonth);
+    if (idx >= 0 && dropScrollRef.current) {
+      const targetY = Math.max(0, 4 + (idx - 1) * DROPDOWN_ITEM_HEIGHT);
+      dropScrollRef.current.scrollTo({ y: targetY, animated: false });
+    }
+  }, [monthItems, selectedMonth]);
+
+  useEffect(() => {
+    if (monthDropOpen) {
+      const timer = setTimeout(() => {
+        scrollToSelectedMonth();
+      }, 20);
+      return () => clearTimeout(timer);
+    }
+  }, [monthDropOpen, scrollToSelectedMonth]);
 
   const updateDropdownCoords = useCallback(() => {
     if (pillRef.current) {
@@ -128,8 +147,6 @@ export default function BudgetOverviewScreen() {
     });
 
     const relevant = merged.filter(c => c.budget > 0 || totalsMap[c.id] > 0);
-    
-    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
     setCategories(relevant);
   }, [user, selectedMonth]);
 
@@ -148,19 +165,37 @@ export default function BudgetOverviewScreen() {
   // Flip Animation State
   const isFlipped = useSharedValue(0);
 
+  // Load data whenever selectedMonth or user changes
+  useEffect(() => {
+    loadData();
+    isFlipped.value = 0;
+  }, [selectedMonth, user]);
+
+  // Reset to current month only when screen is navigated TO (screen gained focus)
   useFocusEffect(
     useCallback(() => { 
-      // Always reset to current month when switching to this screen
-      setSelectedMonth(currentMonthKey());
       setMonthDropOpen(false);
       isFlipped.value = 0;
-      loadData(); 
-    }, [loadData, isFlipped])
+      const curMonth = currentMonthKey();
+      let didChange = false;
+      setSelectedMonth(prev => {
+        if (prev !== curMonth) {
+          didChange = true;
+          return curMonth;
+        }
+        return prev;
+      });
+      const timer = setTimeout(() => {
+        if (!didChange) {
+          loadData();
+        }
+      }, 0);
+      return () => {
+        clearTimeout(timer);
+        setMonthDropOpen(false);
+      };
+    }, [])
   );
-
-  useEffect(() => {
-    isFlipped.value = 0;
-  }, [selectedMonth]);
 
   const isExceeded = overallBudget > 0 && monthTotal > overallBudget;
   const overAmount = isExceeded ? monthTotal - overallBudget : 0;
@@ -266,7 +301,7 @@ export default function BudgetOverviewScreen() {
                       {monthItems.find(m => m.value === selectedMonth)?.label || 'Month'}
                     </Text>
                     <ChevronDown
-                      stroke="#FFFFFF"
+                      stroke={TEXT_DARK}
                       size={14}
                       style={{ transform: [{ rotate: monthDropOpen ? '180deg' : '0deg' }] }}
                     />
@@ -358,7 +393,7 @@ export default function BudgetOverviewScreen() {
                     {monthItems.find(m => m.value === selectedMonth)?.label || 'Month'}
                   </Text>
                   <ChevronDown
-                    stroke="#FFFFFF"
+                    stroke={TEXT_DARK}
                     size={16}
                     style={{ transform: [{ rotate: monthDropOpen ? '180deg' : '0deg' }] }}
                   />
@@ -462,19 +497,20 @@ export default function BudgetOverviewScreen() {
             },
           ]}
         >
-          <LinearGradient
-            colors={[BRAND_PURPLE, '#8862F8']}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
-            style={styles.monthDropdownGradient}
-          >
+          <View style={styles.monthDropdownContent}>
             <ScrollView
+              ref={dropScrollRef}
+              contentOffset={{
+                x: 0,
+                y: Math.max(0, 4 + (monthItems.findIndex(m => m.value === selectedMonth) - 1) * DROPDOWN_ITEM_HEIGHT),
+              }}
+              onContentSizeChange={scrollToSelectedMonth}
               showsVerticalScrollIndicator={false}
               bounces={true}
               overScrollMode="always"
               keyboardShouldPersistTaps="handled"
               style={{ flex: 1 }}
-              contentContainerStyle={{ paddingVertical: 2 }}
+              contentContainerStyle={{ paddingVertical: 4 }}
             >
               {monthItems.map((item, index) => {
                 const isSelected = item.value === selectedMonth;
@@ -505,7 +541,7 @@ export default function BudgetOverviewScreen() {
                 );
               })}
             </ScrollView>
-          </LinearGradient>
+          </View>
         </View>
       </Modal>
     </View>
@@ -606,62 +642,61 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    backgroundColor: BRAND_PURPLE,
+    backgroundColor: '#F3F4F6',
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
     minHeight: 34,
     borderRadius: 17,
     paddingHorizontal: 12,
     minWidth: 124,
-    shadowColor: BRAND_PURPLE,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.25,
-    shadowRadius: 4,
-    elevation: 3,
   },
   monthPillText: {
     fontFamily: FONTS.semiBold,
     fontSize: 13,
-    color: '#FFFFFF',
+    color: TEXT_DARK,
     marginRight: 6,
   },
   monthDropdownMenu: {
     position: 'absolute',
-    height: 140,
+    height: 160,
     borderRadius: 14,
     overflow: 'hidden',
     zIndex: 9999,
     elevation: 9999,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.35,
-    shadowRadius: 8,
+    shadowOpacity: 0.12,
+    shadowRadius: 10,
   },
-  monthDropdownGradient: {
+  monthDropdownContent: {
     flex: 1,
+    backgroundColor: '#FFFFFF',
     borderRadius: 14,
-    borderWidth: 1.5,
-    borderColor: 'rgba(255,255,255,0.4)',
   },
   monthDropdownItem: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    height: 34,
-    paddingHorizontal: 12,
+    height: 36,
+    paddingHorizontal: 14,
   },
   monthDropdownItemSelected: {
-    backgroundColor: 'rgba(255,255,255,0.25)',
+    backgroundColor: BRAND_PURPLE + '14',
   },
   monthDropdownItemBorder: {
     borderTopWidth: 0.5,
-    borderTopColor: 'rgba(255,255,255,0.18)',
+    borderTopColor: '#F3F4F6',
   },
   monthDropdownItemText: {
-    fontFamily: FONTS.semiBold,
+    fontFamily: FONTS.medium,
     fontSize: 13,
-    color: 'rgba(255,255,255,0.9)',
+    color: TEXT_DARK,
   },
   monthDropdownItemTextSelected: {
-    color: '#FFFFFF',
+    color: BRAND_PURPLE,
     fontFamily: FONTS.bold,
   },
 

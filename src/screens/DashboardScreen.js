@@ -168,12 +168,10 @@ export default function DashboardScreen({ navigation }) {
     loadData();
   }, [selectedMonth, loadData]);
 
-  // Reset dropdown to current month when user switches away from Dashboard
+  // Close dropdown if open when blurring
   useEffect(() => {
     if (!navigation) return;
     const unsubscribe = navigation.addListener('blur', () => {
-      const currentMonthKey = generateMonthOptions()[0].value;
-      setSelectedMonth(currentMonthKey);
       setMonthDropOpen(false);
     });
     return unsubscribe;

@@ -201,11 +201,13 @@ export default function TransactionsListScreen({ navigation, route }) {
     if (searchOpen) navigation.setParams({ searchOpen: false });
   }, [searchOpen]);
 
-  // Auto-reset when leaving the screen
+  // Auto-reset when leaving the screen (deferred so it doesn't block exit transition)
   useFocusEffect(
     useCallback(() => {
       return () => {
-        resetFilters();
+        setTimeout(() => {
+          resetFilters();
+        }, 300);
       };
     }, [resetFilters])
   );
@@ -218,7 +220,6 @@ export default function TransactionsListScreen({ navigation, route }) {
       startDate: toDateStr(startDate),
       endDate:   toDateStr(endDate),
     });
-    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
     setExpenses(data);
 
     const rows  = getCategoriesForUser(user.id);
@@ -236,7 +237,14 @@ export default function TransactionsListScreen({ navigation, route }) {
     setPayItems(pItems);
   }, [user?.id, search, startDate, endDate]);
 
-  useFocusEffect(useCallback(() => { loadData(); }, [loadData]));
+  useFocusEffect(
+    useCallback(() => {
+      const timer = setTimeout(() => {
+        loadData();
+      }, 0);
+      return () => clearTimeout(timer);
+    }, [loadData])
+  );
 
   // Animate list when in-memory filters change
   useEffect(() => {

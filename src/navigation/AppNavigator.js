@@ -122,18 +122,17 @@ const AppHeader = ({ title, route, navigation: navProp }) => {
   );
 };
 
-// ── Tab icon — icon + label SAME ROW (horizontal) ───────────────
+// ── Tab icon (fixed size to prevent layout shifts on switch) ─────
 const TabIcon = ({ IconComponent, label, focused }) => {
   const color = focused ? BRAND_PURPLE : TEXT_MUTED;
   return (
     <View style={[tabStyles.wrap, focused && tabStyles.wrapActive]}>
       <View style={[tabStyles.iconBg, focused && tabStyles.iconBgActive]}>
-        <IconComponent stroke={color} size={focused ? 28 : 24} strokeWidth={focused ? 2.5 : 2} />
+        <IconComponent stroke={color} size={24} strokeWidth={focused ? 2.4 : 2} />
       </View>
       <Text 
         style={[tabStyles.label, { color }, focused && tabStyles.labelActive]}
         numberOfLines={1}
-        adjustsFontSizeToFit
       >
         {label}
       </Text>
@@ -169,6 +168,11 @@ const CenterAddButton = ({ onPress }) => (
   </TouchableOpacity>
 );
 
+// Stable header renderer to prevent unmounting/remounting on tab switch
+const renderTabHeader = ({ route }) => (
+  <AppHeader title={route.name === 'More' ? 'More' : route.name} route={route} />
+);
+
 // ── Bottom tab navigator ────────────────────────────────────────
 const MainTabs = () => {
   const insets = useSafeAreaInsets();
@@ -179,10 +183,10 @@ const MainTabs = () => {
 
   return (
     <Tab.Navigator
-      detachInactiveScreens={false}
-      screenOptions={({ route }) => ({
-        // Render the shared header for every tab
-        header: () => <AppHeader title={route.name === 'More' ? 'More' : route.name} route={route} />,
+      screenOptions={{
+        header: renderTabHeader,
+        freezeOnBlur: true,
+        animation: 'none',
         tabBarStyle: {
           backgroundColor: BG_WHITE,
           borderTopColor: BORDER,
@@ -209,7 +213,7 @@ const MainTabs = () => {
             delayPressIn={0}
           />
         ),
-      })}
+      }}
     >
     <Tab.Screen
       name="Dashboard"

@@ -114,11 +114,17 @@ export default function ReportsScreen({ navigation }) {
       pct: total > 0 ? Math.round((c.total / total) * 100) : 0,
     }));
     
-    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
     setCategoryList(catsList);
   }, [user, monthKey, activeTab]);
 
-  useFocusEffect(useCallback(() => { loadData(); }, [loadData]));
+  useFocusEffect(
+    useCallback(() => {
+      const timer = setTimeout(() => {
+        loadData();
+      }, 0);
+      return () => clearTimeout(timer);
+    }, [loadData])
+  );
 
   return (
     <View style={styles.safeArea}>
